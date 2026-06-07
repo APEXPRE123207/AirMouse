@@ -30,7 +30,7 @@ jobs:
             from buildozer import Buildozer
 
             b = Buildozer(filename='buildozer.spec')
-            b.config.set('buildozer', 'warn_on_root', '0')
+            b.check_root = lambda: None
             b.run_command(['android', 'debug'])
             PY
 
