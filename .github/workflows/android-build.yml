@@ -18,6 +18,7 @@ jobs:
           image: kivy/buildozer:latest
           run: |
             set -eux
+            export BUILDOZER_ALLOW_ROOT=1
             # print python version and workspace for debugging
             python --version || true
             ls -la
