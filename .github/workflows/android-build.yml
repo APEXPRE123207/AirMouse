@@ -18,6 +18,7 @@ jobs:
           image: kivy/buildozer:latest
           run: |
             set -eux
+            cd Android
             # print python version and workspace for debugging
             python --version || true
             ls -la
@@ -25,10 +26,10 @@ jobs:
             pip install --upgrade pip
             pip install buildozer
             # Build the debug APK (adjust target if needed)
-            buildozer android debug
+            yes | buildozer android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: bin/*/*.apk
+          path: Android/bin/*.apk
