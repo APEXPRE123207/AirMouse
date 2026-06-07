@@ -19,7 +19,6 @@ jobs:
           options: -w /github/workspace/Android
           run: |
             set -eux
-            cd Android
             # print python version and workspace for debugging
             python --version || true
             ls -la
