@@ -12,85 +12,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Buildozer (Docker)
+      - name: Build APK with Buildozer
         uses: addnab/docker-run-action@v3
         with:
           image: kivy/buildozer:latest
-          options: -w /github/workspace/Android
+          options: >-
+            -v ${{ github.workspace }}:/github/workspace
+            -w /github/workspace/Android
           run: |
             set -eux
-            # print python version and workspace for debugging
-            python --version || true
+
+            # ── Debug info ──
+            python3 --version || true
+            pwd
             ls -la
-            cat > buildozer.spec <<'EOF'
-            [app]
 
-            # App identity
-            title           = AirMouse
-            package.name    = airmouse
-            package.domain  = com.airmouse
-
-            # Source
-            source.dir      = src
-            source.include_exts = py,png,jpg,kv,atlas,json
-
-            # Version
-            version         = 0.1.0
-
-            # Python / Kivy requirements
-            requirements = python3,kivy==2.3.0,pyjnius,android
-
-            # Android-specific
-            android.permissions = BODY_SENSORS, INTERNET, ACCESS_NETWORK_STATE
-            android.api         = 34
-            android.minapi      = 24
-            android.ndk         = 25b
-            android.sdk         = 34
-            android.archs       = arm64-v8a, armeabi-v7a
-
-            # Sensor feature declaration (needed for Google Play)
-            android.manifest.sensors = android.hardware.sensor.gyroscope
-
-            # Orientation lock
-            orientation = portrait
-
-            # Icons (placeholder — replace before release)
-            # icon.filename = %(source.dir)s/icon.png
-
-            # Buildozer / p4a internals
-            log_level   = 2
-            warn_on_root = 1
-
-            [buildozer]
-            log_level = 2
-            warn_on_root = 0
-            EOF
-            # Install/ensure buildozer is available
-            pip install --upgrade pip
-            pip install buildozer
-            # Install Android SDK pieces into the same SDK root Buildozer uses
-            export ANDROID_SDK_ROOT=/root/.buildozer/android/platform/android-sdk
-            mkdir -p "$ANDROID_SDK_ROOT"
-            yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses
-            sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install "platform-tools" "platforms;android-34" "build-tools;37.0.0"
-            test -x "$ANDROID_SDK_ROOT/build-tools/37.0.0/aidl"
-            # Disable interactive root confirmation in CI container
-            [ -f buildozer.spec ] || { echo "Error: Android/buildozer.spec not found"; exit 1; }
+            # ── The buildozer.spec already lives in the repo.
+            #    Patch warn_on_root so Buildozer won't prompt in CI.
             if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
               sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/' buildozer.spec
             else
               printf '\nwarn_on_root = 0\n' >> buildozer.spec
             fi
-            # Build the debug APK (adjust target if needed)
-            python - <<'PY'
-            import os
-            from buildozer import Buildozer
 
-            print('cwd=', os.getcwd())
-            b = Buildozer(filename='/github/workspace/Android/buildozer.spec')
-            b.check_root = lambda: None
-            b.run_command(['android', 'debug'])
-            PY
+            # ── Accept Android SDK licenses non-interactively ──
+            export BUILDOZER_WARN_ON_ROOT=0
+
+            # ── Let Buildozer handle SDK/NDK download & build ──
+            #    This is all you need — Buildozer automatically downloads
+            #    the Android SDK, NDK, platform-tools, and build-tools.
+            yes | buildozer android debug 2>&1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
