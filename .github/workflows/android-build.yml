@@ -19,6 +19,7 @@ jobs:
           options: -w /github/workspace/Android
           run: |
             set -eux
+            cd Android
             # print python version and workspace for debugging
             python --version || true
             ls -la
@@ -68,6 +69,13 @@ jobs:
             # Install/ensure buildozer is available
             pip install --upgrade pip
             pip install buildozer
+            # Disable interactive root confirmation in CI container
+            [ -f buildozer.spec ] || { echo "Error: Android/buildozer.spec not found"; exit 1; }
+            if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
+              sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/' buildozer.spec
+            else
+              printf '\nwarn_on_root = 0\n' >> buildozer.spec
+            fi
             # Build the debug APK (adjust target if needed)
             python - <<'PY'
             import os
@@ -83,4 +91,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: Android/bin/*.apk
+          path: |
+            Android/bin/*.apk
+            Android/bin/*/*.apk
