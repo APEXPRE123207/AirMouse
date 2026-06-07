@@ -18,7 +18,7 @@ jobs:
           image: kivy/buildozer:latest
           run: |
             set -eux
-            export BUILDOZER_ALLOW_ROOT=1
+            cd Android
             # print python version and workspace for debugging
             python --version || true
             ls -la
@@ -32,4 +32,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: bin/*/*.apk
+          path: Android/bin/*.apk
