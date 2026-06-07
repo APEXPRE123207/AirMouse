@@ -26,7 +26,7 @@ jobs:
             pip install --upgrade pip
             pip install buildozer
             # Disable interactive root confirmation in CI container
-            [ -f buildozer.spec ] || { echo "Error: buildozer.spec not found in current directory"; exit 1; }
+            [ -f buildozer.spec ] || { echo "Error: Android/buildozer.spec not found"; exit 1; }
             if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
               sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/' buildozer.spec
             else
