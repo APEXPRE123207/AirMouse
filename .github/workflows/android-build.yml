@@ -26,7 +26,13 @@ jobs:
             pip install --upgrade pip
             pip install buildozer
             # Build the debug APK (adjust target if needed)
-            printf 'y\n' | buildozer android debug
+            python - <<'PY'
+            from buildozer import Buildozer
+
+            b = Buildozer(filename='buildozer.spec')
+            b.config.set('buildozer', 'warn_on_root', '0')
+            b.run_command(['android', 'debug'])
+            PY
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
