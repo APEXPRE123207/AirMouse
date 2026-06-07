@@ -26,7 +26,11 @@ jobs:
             pip install --upgrade pip
             pip install buildozer
             # Disable interactive root confirmation in CI container
-            sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/; t; $ a warn_on_root = 0' buildozer.spec
+            if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
+              sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/' buildozer.spec
+            else
+              printf '\nwarn_on_root = 0\n' >> buildozer.spec
+            fi
             # Build the debug APK (adjust target if needed)
             buildozer android debug
 
