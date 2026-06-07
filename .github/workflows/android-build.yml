@@ -27,9 +27,11 @@ jobs:
             pip install buildozer
             # Build the debug APK (adjust target if needed)
             python - <<'PY'
+            import os
             from buildozer import Buildozer
 
-            b = Buildozer(filename='buildozer.spec')
+            print('cwd=', os.getcwd())
+            b = Buildozer(filename='/github/workspace/Android/buildozer.spec')
             b.check_root = lambda: None
             b.run_command(['android', 'debug'])
             PY
