@@ -16,6 +16,7 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: kivy/buildozer:latest
+          options: -w /github/workspace/Android
           run: |
             set -eux
             cd Android
@@ -33,7 +34,15 @@ jobs:
               printf '\nwarn_on_root = 0\n' >> buildozer.spec
             fi
             # Build the debug APK (adjust target if needed)
-            buildozer android debug
+            python - <<'PY'
+            import os
+            from buildozer import Buildozer
+
+            print('cwd=', os.getcwd())
+            b = Buildozer(filename='/github/workspace/Android/buildozer.spec')
+            b.check_root = lambda: None
+            b.run_command(['android', 'debug'])
+            PY
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
