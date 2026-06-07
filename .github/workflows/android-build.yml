@@ -68,6 +68,9 @@ jobs:
             # Install/ensure buildozer is available
             pip install --upgrade pip
             pip install buildozer
+            # Accept Android SDK licenses and preinstall the SDK packages Buildozer needs
+            yes | sdkmanager --licenses || true
+            sdkmanager "platform-tools" "platforms;android-34" "build-tools;37.0.0" || true
             # Disable interactive root confirmation in CI container
             [ -f buildozer.spec ] || { echo "Error: Android/buildozer.spec not found"; exit 1; }
             if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
