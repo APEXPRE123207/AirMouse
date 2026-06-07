@@ -1,0 +1,34 @@
+name: Android Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Buildozer (Docker)
+        uses: addnab/docker-run-action@v3
+        with:
+          image: kivy/buildozer:latest
+          run: |
+            set -eux
+            # print python version and workspace for debugging
+            python --version || true
+            ls -la
+            # Install/ensure buildozer is available
+            pip install --upgrade pip
+            pip install buildozer
+            # Build the debug APK (adjust target if needed)
+            buildozer android debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: bin/*/*.apk
