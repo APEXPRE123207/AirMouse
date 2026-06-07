@@ -26,7 +26,7 @@ jobs:
             pip install --upgrade pip
             pip install buildozer
             # Disable interactive root confirmation in CI container
-            test -f buildozer.spec
+            [ -f buildozer.spec ] || { echo "Error: buildozer.spec not found in Android/"; exit 1; }
             if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
               sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/' buildozer.spec
             else
@@ -39,4 +39,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: Android/bin/*.apk
+          path: |
+            Android/bin/*.apk
+            Android/bin/*/*.apk
