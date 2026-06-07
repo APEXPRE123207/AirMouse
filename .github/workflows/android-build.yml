@@ -16,9 +16,9 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: kivy/buildozer:latest
+          options: -w /github/workspace/Android
           run: |
             set -eux
-            cd Android
             # print python version and workspace for debugging
             python --version || true
             ls -la
