@@ -12,19 +12,22 @@ source.include_exts = py,png,jpg,kv,atlas,json
 # Version
 version         = 0.1.0
 
-# Python / Kivy requirements
-requirements = python3,kivy==2.3.0,pyjnius,android
+# Requirements — do NOT include 'python3' explicitly, it is always implicit
+requirements = kivy==2.3.0,pyjnius,android
 
 # Android-specific
 android.permissions = BODY_SENSORS, INTERNET, ACCESS_NETWORK_STATE
 android.api         = 34
 android.minapi      = 24
 android.ndk         = 25b
-android.sdk         = 34
-android.archs       = arm64-v8a, armeabi-v7a
+# android.sdk is deprecated — removed
+# Build arm64 only for CI speed; add armeabi-v7a for a release build
+android.archs       = arm64-v8a
 
-# Sensor feature declaration (needed for Google Play)
-android.manifest.sensors = android.hardware.sensor.gyroscope
+# NOTE: android.manifest.sensors is NOT a valid buildozer key and breaks the build.
+# To declare the gyroscope feature, add it via a custom manifest fragment instead:
+# android.add_manifest_xml_path = manifest_extras.xml
+# (see BUILD_GUIDE for how to create that file if needed for Play Store)
 
 # Orientation lock
 orientation = portrait
@@ -32,10 +35,9 @@ orientation = portrait
 # Icons (placeholder — replace before release)
 # icon.filename = %(source.dir)s/icon.png
 
-# Buildozer / p4a internals
-log_level   = 2
-warn_on_root = 1
+# Buildozer internals
+log_level = 2
 
 [buildozer]
-log_level = 2
+log_level    = 2
 warn_on_root = 0

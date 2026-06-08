@@ -8,45 +8,63 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ── Cache the Buildozer download directory (~/.buildozer)
+      # This saves ~2 GB of SDK/NDK re-downloads on every run.
+      # Cache key changes only when buildozer.spec changes.
+      - name: Cache Buildozer global directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ hashFiles('Android/buildozer.spec') }}
+          restore-keys: |
+            buildozer-
+
       - name: Build APK with Buildozer
         uses: addnab/docker-run-action@v3
         with:
+          # Pin to a specific tag instead of :latest for reproducible builds.
+          # Check https://hub.docker.com/r/kivy/buildozer/tags for latest stable.
           image: kivy/buildozer:latest
           options: >-
             -v ${{ github.workspace }}:/github/workspace
+            -v ${{ env.HOME }}/.buildozer:/root/.buildozer
             -w /github/workspace/Android
           run: |
             set -eux
 
-            # ── Debug info ──
-            python3 --version || true
+            # ── Debug info ──────────────────────────────────────────────
+            python3 --version
+            buildozer --version
             pwd
             ls -la
 
-            # ── The buildozer.spec already lives in the repo.
-            #    Patch warn_on_root so Buildozer won't prompt in CI.
-            if grep -qE '^warn_on_root[[:space:]]*=' buildozer.spec; then
-              sed -i -E 's/^warn_on_root[[:space:]]*=.*/warn_on_root = 0/' buildozer.spec
-            else
-              printf '\nwarn_on_root = 0\n' >> buildozer.spec
+            # ── Accept Android SDK licenses non-interactively ───────────
+            # These env vars tell Buildozer/p4a to accept licenses and
+            # skip interactive prompts without piping 'yes' (which can
+            # swallow prompts it wasn't meant for).
+            export BUILDOZER_WARN_ON_ROOT=0
+            export GRADLE_OPTS="-Dorg.gradle.daemon=false"
+
+            # Accept SDK licenses if the SDK is already cached
+            if [ -d /root/.buildozer/android/platform/android-sdk ]; then
+              yes | /root/.buildozer/android/platform/android-sdk/cmdline-tools/*/bin/sdkmanager \
+                --licenses 2>/dev/null || true
             fi
 
-            # ── Accept Android SDK licenses non-interactively ──
-            export BUILDOZER_WARN_ON_ROOT=0
-
-            # ── Let Buildozer handle SDK/NDK download & build ──
-            #    This is all you need — Buildozer automatically downloads
-            #    the Android SDK, NDK, platform-tools, and build-tools.
-            yes | buildozer android debug 2>&1
+            # ── Build ───────────────────────────────────────────────────
+            buildozer android debug 2>&1
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk
+          name: airmouse-debug-apk
           path: |
             Android/bin/*.apk
             Android/bin/*/*.apk
+          # Fail the step if no APK is found rather than silently uploading nothing
+          if-no-files-found: error
