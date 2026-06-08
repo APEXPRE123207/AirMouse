@@ -12,8 +12,12 @@ source.include_exts = py,png,jpg,kv,atlas,json
 # Version
 version         = 0.1.0
 
-# Requirements — do NOT include 'python3' explicitly, it is always implicit
-requirements = kivy==2.3.0,pyjnius,android
+# IMPORTANT: pin python3 to 3.11 explicitly.
+# p4a (python-for-android) now defaults to Python 3.14, but Kivy 2.3.0's
+# Cython-generated C code calls _PyLong_AsByteArray() with 5 args.
+# Python 3.14 changed that internal API to require 6 args → compile error.
+# Kivy 2.3.0 only supports up to Python 3.11 / 3.12. Pin to 3.11 to be safe.
+requirements = python3==3.11.9,kivy==2.3.0,pyjnius,android
 
 # Android-specific
 android.permissions = BODY_SENSORS, INTERNET, ACCESS_NETWORK_STATE
