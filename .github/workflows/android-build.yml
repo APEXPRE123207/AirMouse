@@ -27,11 +27,11 @@ jobs:
       - name: Build APK with Buildozer
         uses: addnab/docker-run-action@v3
         with:
-          # Use a pinned stable image — NOT :latest.
-          # kivy/buildozer:latest recently started shipping Python 3.14 in p4a,
-          # which breaks Kivy 2.3.0 compilation (_PyLong_AsByteArray API change).
-          # stable-1.5.0 is the last release that ships Python 3.11 by default.
-          image: kivy/buildozer:stable-1.5.0
+          # kivy/buildozer only publishes one tag (:latest) — no versioned tags exist.
+          # The Python version is controlled by the python3==3.11.9 pin in
+          # buildozer.spec, which forces p4a to download CPython 3.11 regardless
+          # of what p4a would default to (currently 3.14, which breaks Kivy 2.3.0).
+          image: kivy/buildozer:latest
           options: >-
             -v ${{ github.workspace }}:/github/workspace
             -v ${{ env.HOME }}/.buildozer:/root/.buildozer
