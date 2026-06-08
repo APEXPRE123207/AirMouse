@@ -17,7 +17,7 @@ version         = 0.1.0
 # Cython-generated C code calls _PyLong_AsByteArray() with 5 args.
 # Python 3.14 changed that internal API to require 6 args → compile error.
 # Kivy 2.3.0 only supports up to Python 3.11 / 3.12. Pin to 3.11 to be safe.
-requirements = python3==3.11.9,kivy==2.3.0,pyjnius,android
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,pyjnius,android
 
 # Android-specific
 android.permissions = BODY_SENSORS, INTERNET, ACCESS_NETWORK_STATE
