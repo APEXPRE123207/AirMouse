@@ -36,8 +36,8 @@ class UDPSender:
         self.host   = host
         self.port   = port
         self._queue: queue.Queue = queue.Queue(maxsize=32)
-        self._sock:  socket.socket | None = None
-        self._thread: threading.Thread | None = None
+        self._sock   = None   # type: socket.socket | None
+        self._thread = None   # type: threading.Thread | None
         self._running = False
         self._connected = False
         self.on_status_change = None   # optional callback(connected: bool)

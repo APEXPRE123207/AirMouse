@@ -71,6 +71,8 @@ class SensorListener:
         self.pitch = 0.0
         self.roll  = 0.0
         self._active = False
+        self._sensor = None
+        self._listener = None
 
         if not ANDROID:
             return
@@ -78,6 +80,10 @@ class SensorListener:
         activity     = PythonActivity.mActivity
         self._sm     = activity.getSystemService(Context.SENSOR_SERVICE)
         self._sensor = self._sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+
+        if self._sensor is None:
+            print('[SensorListener] TYPE_GAME_ROTATION_VECTOR not available')
+            return
 
         # Create real Java float[] arrays via jnius
         # These are passed by reference into getRotationMatrixFromVector /
@@ -122,7 +128,7 @@ class SensorListener:
         return Listener()
 
     def start(self):
-        if not ANDROID or self._active:
+        if not ANDROID or self._active or self._sensor is None:
             return
         self._sm.registerListener(
             self._listener, self._sensor, SensorManager.SENSOR_DELAY_GAME
@@ -130,7 +136,7 @@ class SensorListener:
         self._active = True
 
     def stop(self):
-        if not ANDROID or not self._active:
+        if not ANDROID or not self._active or self._sensor is None:
             return
         self._sm.unregisterListener(self._listener)
         self._active = False
@@ -325,11 +331,10 @@ class MainScreen(Screen):
         hdr = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
 
         title = Label(
-            text='AIRMOUSE',
+            text='A I R M O U S E',
             font_size=sp(18), bold=True,
             color=(0.95, 0.95, 0.98, 1),
             halign='left', valign='middle',
-            letter_spacing=sp(3),
         )
         title.bind(size=title.setter('text_size'))
 
@@ -471,9 +476,8 @@ class SettingsScreen(Screen):
         back.bind(on_press=lambda *_: setattr(self.manager, 'current', 'main'))
         hdr.add_widget(back)
         hdr.add_widget(Label(
-            text='SETTINGS', font_size=sp(16), bold=True,
+            text='S E T T I N G S', font_size=sp(16), bold=True,
             color=(0.95, 0.95, 0.98, 1), halign='left', valign='middle',
-            letter_spacing=sp(2),
         ))
         root.add_widget(hdr)
 
