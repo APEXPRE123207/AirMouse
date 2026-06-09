@@ -31,6 +31,7 @@ jobs:
           image: kivy/buildozer:latest
           options: >-
             -v ${{ github.workspace }}:/github/workspace
+            -v ${{ env.HOME }}/.buildozer:/root/.buildozer
             -w /github/workspace/Android
           run: |
             set -eux
@@ -48,7 +49,7 @@ jobs:
 
             # Phase 2: write license hash files directly so sdkmanager
             # never prompts again, even on clean cache restores
-            SDK_LICENSES=.buildozer/android/platform/android-sdk/licenses
+            SDK_LICENSES=/root/.buildozer/android/platform/android-sdk/licenses
             mkdir -p "$SDK_LICENSES"
             printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' \
               > "$SDK_LICENSES/android-sdk-license"
@@ -61,7 +62,7 @@ jobs:
             printf 'd975f751698a77b662f1254ddbeed3901e976f5a\n' \
               > "$SDK_LICENSES/intel-android-extra-license"
 
-            SDKMANAGER=$(find .buildozer/android/platform/android-sdk/cmdline-tools \
+            SDKMANAGER=$(find /root/.buildozer/android/platform/android-sdk/cmdline-tools \
                               -name sdkmanager -type f 2>/dev/null | head -1 || true)
             if [ -n "$SDKMANAGER" ]; then
               yes | "$SDKMANAGER" --licenses 2>/dev/null || true
