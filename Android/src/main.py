@@ -59,6 +59,11 @@ class SensorListener:
 
     This gives gravity-referenced angles that work correctly regardless
     of how the phone is physically held.
+
+    IMPORTANT — Pyjnius Java array note:
+    getRotationMatrixFromVector() and getOrientation() require real Java
+    float[] arrays, not Python lists. We use jnius.cast + array module to
+    create them once at init and reuse every frame (avoids GC pressure).
     """
 
     def __init__(self):
@@ -74,16 +79,22 @@ class SensorListener:
         self._sm     = activity.getSystemService(Context.SENSOR_SERVICE)
         self._sensor = self._sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
 
-        # Pre-allocate Java float arrays (reused every frame for zero GC)
-        Float = autoclass('java.lang.Float')
-        self._rot_matrix   = [0.0] * 9   # 3x3 rotation matrix
-        self._orientation  = [0.0] * 3   # azimuth, pitch, roll
+        # Create real Java float[] arrays via jnius
+        # These are passed by reference into getRotationMatrixFromVector /
+        # getOrientation so they get filled in-place every frame.
+        jarray        = autoclass('java.lang.reflect.Array')
+        Float         = autoclass('java.lang.Float')
+        jfloat        = autoclass('java.lang.Float').TYPE
+        self._rot9    = jarray.newInstance(jfloat, 9)   # 3×3 rotation matrix
+        self._orient3 = jarray.newInstance(jfloat, 3)   # azimuth, pitch, roll
 
         self._listener = self._make_listener()
 
     def _make_listener(self):
-        ref = self
-        sm  = self._sm
+        ref  = self
+        sm   = self._sm
+        rot9 = self._rot9
+        ori3 = self._orient3
 
         class Listener(PythonJavaClass):
             __javainterfaces__ = ['android/hardware/SensorEventListener']
@@ -91,20 +102,18 @@ class SensorListener:
 
             @java_method('(Landroid/hardware/SensorEvent;)V')
             def onSensorChanged(self, event):
-                # Step 1: quaternion → rotation matrix (Android handles this)
-                rot = [0.0] * 9
-                sm.getRotationMatrixFromVector(rot, event.values)
+                # Step 1: rotation-vector quaternion → 3×3 rotation matrix
+                sm.getRotationMatrixFromVector(rot9, event.values)
 
                 # Step 2: rotation matrix → world-frame Euler angles
-                orient = [0.0] * 3
-                sm.getOrientation(rot, orient)
+                sm.getOrientation(rot9, ori3)
 
-                # orient[0] = azimuth  (yaw,   radians, -π..+π)
-                # orient[1] = pitch    (radians, -π/2..+π/2, negative = nose up)
-                # orient[2] = roll     (radians, -π..+π,   positive = right lean)
-                ref.yaw   =  math.degrees(orient[0])
-                ref.pitch = -math.degrees(orient[1])  # negate: positive = nose up
-                ref.roll  =  math.degrees(orient[2])
+                # ori3[0] = azimuth  (yaw,   radians, -π..+π)
+                # ori3[1] = pitch    (radians, -π/2..+π/2, negative = nose up)
+                # ori3[2] = roll     (radians, -π..+π,   positive = right lean)
+                ref.yaw   =  math.degrees(ori3[0])
+                ref.pitch = -math.degrees(ori3[1])  # negate: positive = nose up
+                ref.roll  =  math.degrees(ori3[2])
 
             @java_method('(Landroid/hardware/Sensor;I)V')
             def onAccuracyChanged(self, sensor, accuracy):

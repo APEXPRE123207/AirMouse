@@ -13,79 +13,62 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Cache the Buildozer download directory (~/.buildozer)
-      # This saves ~2 GB of SDK/NDK re-downloads on every run.
-      # Cache key changes only when buildozer.spec changes.
-      - name: Cache Buildozer global directory
+      # ── Cache: store the .buildozer folder INSIDE the workspace.
+      # The Docker container writes to /github/workspace/Android/.buildozer
+      # (same path as the working dir), not to ~/.buildozer on the runner.
+      # Caching the workspace-relative folder is what actually gets reused.
+      - name: Cache Buildozer directory
         uses: actions/cache@v4
         with:
-          path: ~/.buildozer
-          key: buildozer-${{ hashFiles('Android/buildozer.spec') }}
+          path: Android/.buildozer
+          key: buildozer-${{ hashFiles('Android/buildozer.spec') }}-v1
           restore-keys: |
             buildozer-
 
       - name: Build APK with Buildozer
         uses: addnab/docker-run-action@v3
         with:
-          # kivy/buildozer only publishes one tag (:latest) — no versioned tags exist.
-          # The Python version is controlled by the python3==3.11.9 pin in
-          # buildozer.spec, which forces p4a to download CPython 3.11 regardless
-          # of what p4a would default to (currently 3.14, which breaks Kivy 2.3.0).
           image: kivy/buildozer:latest
           options: >-
             -v ${{ github.workspace }}:/github/workspace
-            -v ${{ env.HOME }}/.buildozer:/root/.buildozer
             -w /github/workspace/Android
           run: |
             set -eux
 
-            # ── Debug info ──────────────────────────────────────────────
             python3 --version
             buildozer --version
-            pwd
-            ls -la
+            pwd && ls -la
 
             export BUILDOZER_WARN_ON_ROOT=0
             export GRADLE_OPTS="-Dorg.gradle.daemon=false"
 
-            # ── Phase 1: let Buildozer download the SDK/NDK ─────────────
-            # Run the build once — it will fail at the license prompt, but
-            # by then the SDK cmdline-tools are already on disk.
+            # ── Accept SDK licenses ───────────────────────────────────────
+            # Phase 1: dry run to download SDK/cmdline-tools
             buildozer android debug 2>&1 || true
 
-            # ── Phase 2: pre-accept ALL SDK licenses ─────────────────────
-            # The correct fix is to write the license hash files directly.
-            # sdkmanager reads these files; if they exist it skips prompting.
-            SDK_LICENSES=/root/.buildozer/android/platform/android-sdk/licenses
+            # Phase 2: write license hash files directly so sdkmanager
+            # never prompts again, even on clean cache restores
+            SDK_LICENSES=.buildozer/android/platform/android-sdk/licenses
             mkdir -p "$SDK_LICENSES"
+            printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' \
+              > "$SDK_LICENSES/android-sdk-license"
+            printf '84831b9409646a918e30573bab4c9c91346d8abd\n' \
+              > "$SDK_LICENSES/android-sdk-preview-license"
+            printf '601085b94cd77f0b54ff86406957099ebe79c4d6\n' \
+              > "$SDK_LICENSES/android-googletv-license"
+            printf '33b6a2b64607f11b759f320ef9dff4ae5c47d97a\n' \
+              > "$SDK_LICENSES/google-gdk-license"
+            printf 'd975f751698a77b662f1254ddbeed3901e976f5a\n' \
+              > "$SDK_LICENSES/intel-android-extra-license"
 
-            # android-sdk-license  (covers build-tools, platforms, etc.)
-            echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >  "$SDK_LICENSES/android-sdk-license"
-            echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> "$SDK_LICENSES/android-sdk-license"
-            echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" >> "$SDK_LICENSES/android-sdk-license"
-
-            # android-sdk-preview-license  (preview / beta tools)
-            echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$SDK_LICENSES/android-sdk-preview-license"
-
-            # android-googletv-license
-            echo "601085b94cd77f0b54ff86406957099ebe79c4d6" > "$SDK_LICENSES/android-googletv-license"
-
-            # google-gdk-license
-            echo "33b6a2b64607f11b759f320ef9dff4ae5c47d97a" > "$SDK_LICENSES/google-gdk-license"
-
-            # intel-android-extra-license
-            echo "d975f751698a77b662f1254ddbeed3901e976f5a" > "$SDK_LICENSES/intel-android-extra-license"
-
-            # Also run sdkmanager --licenses in case it checks differently
-            SDKMANAGER=$(find /root/.buildozer/android/platform/android-sdk/cmdline-tools \
-                              -name sdkmanager -type f 2>/dev/null | head -1)
+            SDKMANAGER=$(find .buildozer/android/platform/android-sdk/cmdline-tools \
+                              -name sdkmanager -type f 2>/dev/null | head -1 || true)
             if [ -n "$SDKMANAGER" ]; then
               yes | "$SDKMANAGER" --licenses 2>/dev/null || true
-              # Explicitly install the build-tools version Buildozer needs
               yes | "$SDKMANAGER" "build-tools;37.0.0" 2>/dev/null || true
             fi
 
-            # ── Phase 3: real build now that licenses are accepted ───────
+            # ── Phase 3: real build ───────────────────────────────────────
             buildozer android debug 2>&1
 
       - name: Upload APK artifact
@@ -95,5 +78,4 @@ jobs:
           path: |
             Android/bin/*.apk
             Android/bin/*/*.apk
-          # Fail the step if no APK is found rather than silently uploading nothing
           if-no-files-found: error
