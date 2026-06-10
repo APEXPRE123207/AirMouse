@@ -1,5 +1,0 @@
-1. Get some icons as the setting, stream and etc icons are not showing.
-2. Sensitivity bar??? in desktop or mobile. ✅ DONE
-3. Map the yaw, roll to desktop app to cursor. ✅ DONE
-4. Roll left -> left click, roll right -> right click ✅ DONE (+ hold to drag)
-5. Roll left below -30 degree threshold -> scroll up, roll right above 30 degree -> scroll down ✅ DONE

@@ -1,7 +1,0 @@
-{
-  "sensitivity": 30,
-  "dead_zone": 5,
-  "smoothing": 50,
-  "click_threshold": 20,
-  "scroll_threshold": 35
-}
