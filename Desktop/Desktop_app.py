@@ -381,8 +381,15 @@ class DesktopApp(QMainWindow):
             self._status_label.setText("Waiting…")
             self._status_label.setStyleSheet(f"color: {TEXT_DIM};")
 
+        # ── Anti-Jitter Click Stabilization ──────────────────────────────
+        # Freeze cursor movement when rolling past 8° to prevent slip before clicking,
+        # but ALLOW cursor movement if we are actively dragging so the user can drag!
+        is_rolling   = abs(dr) > 8.0
+        is_dragging  = self.click_ctl.state == ClickController.DRAGGING
+        pause_cursor = is_rolling and not is_dragging
+
         # Cursor movement
-        self.cursor_ctl.update(self.current_yaw, self.current_pitch)
+        self.cursor_ctl.update(self.current_yaw, self.current_pitch, paused=pause_cursor)
 
         # Click / drag / scroll
         action = self.click_ctl.update(dr)

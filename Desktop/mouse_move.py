@@ -110,7 +110,7 @@ class CursorController:
     def set_smoothing(self, v):
         self.smoothing = max(0.05, min(1.0, v))
 
-    def update(self, yaw, pitch):
+    def update(self, yaw, pitch, paused=False):
         if not self._active:
             return
         if self._prev_yaw is None:
@@ -120,6 +120,12 @@ class CursorController:
         raw_dx = yaw - self._prev_yaw
         raw_dy = pitch - self._prev_pitch
         self._prev_yaw, self._prev_pitch = yaw, pitch
+
+        if paused:
+            # Consume the delta but do not move the cursor (prevents click jitter)
+            self._smooth_dx = 0.0
+            self._smooth_dy = 0.0
+            return
 
         if raw_dx > 180.0:   raw_dx -= 360.0
         elif raw_dx < -180.0: raw_dx += 360.0
@@ -168,7 +174,7 @@ class ClickController:
     click_threshold  : degrees to trigger click/drag zone (default 20°)
     scroll_threshold : degrees to trigger scroll zone (default 35°)
     reset_zone       : degrees from centre to reset state (default 10°)
-    hold_time        : seconds before click becomes drag (default 0.4s)
+    hold_time        : seconds before click becomes drag (default 1.5s)
     scroll_interval  : frames between scroll ticks (default 8 ≈ 7.5/sec)
     """
 
@@ -178,7 +184,7 @@ class ClickController:
     SCROLLING = 3    # continuously scrolling
 
     def __init__(self, click_threshold=20.0, scroll_threshold=35.0,
-                 reset_zone=10.0, hold_time=0.4, scroll_interval=8):
+                 reset_zone=10.0, hold_time=1.5, scroll_interval=8):
         self.click_threshold  = click_threshold
         self.scroll_threshold = scroll_threshold
         self.reset_zone       = reset_zone
