@@ -19,6 +19,7 @@ FIX:
 """
 
 import math
+import threading
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -26,6 +27,7 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
+from kivy.uix.image import Image
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle, Line, Ellipse
@@ -289,7 +291,7 @@ class _StatusDot(Widget):
 class _RoundedButton(Button):
     def __init__(self, text='', bg_color=(0.2, 0.6, 1.0), **kwargs):
         super().__init__(
-            text=text, font_size=sp(14), bold=True,
+            text=text, font_size=sp(14), bold=True, markup=True,
             color=(1, 1, 1, 1),
             background_color=(0, 0, 0, 0), **kwargs
         )
@@ -330,6 +332,8 @@ class MainScreen(Screen):
         # ── Header ───────────────────────────────────────────────────────
         hdr = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
 
+        logo = Image(source='logo.jpg', size_hint_x=None, width=dp(32))
+
         title = Label(
             text='A I R M O U S E',
             font_size=sp(18), bold=True,
@@ -337,6 +341,8 @@ class MainScreen(Screen):
             halign='left', valign='middle',
         )
         title.bind(size=title.setter('text_size'))
+
+        hdr.add_widget(logo)
 
         self._status_lbl = Label(
             text='offline',
@@ -366,12 +372,12 @@ class MainScreen(Screen):
             cols=2, size_hint_y=None, height=dp(52), spacing=dp(10)
         )
         self._cal_btn = _RoundedButton(
-            text='◎  SET ZERO', bg_color=(0.22, 0.58, 1.00)
+            text='[font=fa-solid-900.ttf]\uf192[/font]  SET ZERO', bg_color=(0.22, 0.58, 1.00)
         )
         self._cal_btn.bind(on_press=self._calibrate)
 
         self._tx_btn = _RoundedButton(
-            text='▶  STREAM', bg_color=(0.15, 0.75, 0.45)
+            text='[font=fa-solid-900.ttf]\uf04b[/font]  STREAM', bg_color=(0.15, 0.75, 0.45)
         )
         self._tx_btn.bind(on_press=self._toggle_stream)
 
@@ -381,8 +387,8 @@ class MainScreen(Screen):
 
         # ── Settings link ─────────────────────────────────────────────────
         cfg = Button(
-            text='⚙  Settings',
-            font_size=sp(12),
+            text='[font=fa-solid-900.ttf]\uf013[/font]  Settings',
+            font_size=sp(14), markup=True,
             color=(0.4, 0.4, 0.45, 1),
             background_color=(0, 0, 0, 0),
             size_hint_y=None, height=dp(32),
@@ -398,26 +404,26 @@ class MainScreen(Screen):
         self._offset['yaw']   = self._sensor.yaw
         self._offset['pitch'] = self._sensor.pitch
         self._offset['roll']  = self._sensor.roll
-        self._cal_btn.text = '✓  ZEROED'
+        self._cal_btn.text = '[font=fa-solid-900.ttf]\uf00c[/font]  ZEROED'
         Clock.schedule_once(
-            lambda *_: setattr(self._cal_btn, 'text', '◎  SET ZERO'), 1.5
+            lambda *_: setattr(self._cal_btn, 'text', '[font=fa-solid-900.ttf]\uf192[/font]  SET ZERO'), 1.5
         )
 
     def _toggle_stream(self, *_):
         self._tx_enabled = not self._tx_enabled
         if self._tx_enabled:
-            self._tx_btn.text = '■  STOP'
+            self._tx_btn.text = '[font=fa-solid-900.ttf]\uf04d[/font]  STOP'
             self._tx_btn._col.rgb = (0.75, 0.25, 0.22)
             self._sender.start()
         else:
-            self._tx_btn.text = '▶  STREAM'
+            self._tx_btn.text = '[font=fa-solid-900.ttf]\uf04b[/font]  STREAM'
             self._tx_btn._col.rgb = (0.15, 0.75, 0.45)
             self._sender.stop()
 
     def _on_net_status(self, connected: bool):
         def _upd(*_):
             if connected:
-                self._status_lbl.text  = f'→ {self._sender.host}'
+                self._status_lbl.text  = f'To: {self._sender.host}'
                 self._status_lbl.color = (0.15, 0.85, 0.55, 1)
                 self._dot.set_active(True)
             else:
@@ -468,7 +474,7 @@ class SettingsScreen(Screen):
         # Header
         hdr = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(4))
         back = Button(
-            text='←', font_size=sp(22), bold=True,
+            text='[font=fa-solid-900.ttf]\uf060[/font]', font_size=sp(20), markup=True,
             color=(0.7, 0.7, 0.75, 1),
             background_color=(0, 0, 0, 0),
             size_hint_x=None, width=dp(44),
@@ -514,30 +520,78 @@ class SettingsScreen(Screen):
                 tf.input_filter = input_filter
             return tf
 
+        # ── IP field + Discover button ────────────────────────────────────
         root.add_widget(field_label('PC IP ADDRESS'))
+
+        ip_row = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None, height=dp(50),
+            spacing=dp(8),
+        )
         self._ip_input = text_field('e.g. 192.168.1.100', self._sender.host or '')
-        root.add_widget(self._ip_input)
+        self._ip_input.size_hint_x = 0.65
+
+        self._discover_btn = _RoundedButton(
+            text='DISCOVER', bg_color=(0.5, 0.35, 0.8)
+        )
+        self._discover_btn.size_hint_x = 0.35
+        self._discover_btn.bind(on_press=self._discover)
+
+        ip_row.add_widget(self._ip_input)
+        ip_row.add_widget(self._discover_btn)
+        root.add_widget(ip_row)
 
         root.add_widget(field_label('UDP PORT'))
         self._port_input = text_field(str(DEFAULT_PORT), str(self._sender.port), 'int')
         root.add_widget(self._port_input)
 
         # Info
-        info = Label(
-            text='Same Wi-Fi required.\nPC IP: run  ipconfig  in Command Prompt.',
+        self._info_label = Label(
+            text='Tap DISCOVER to auto-find your PC,\nor enter the IP manually.',
             font_size=sp(12),
             color=(0.38, 0.38, 0.43, 1),
             halign='left', valign='top',
             size_hint_y=None, height=dp(52),
         )
-        info.bind(size=info.setter('text_size'))
-        root.add_widget(info)
+        self._info_label.bind(size=self._info_label.setter('text_size'))
+        root.add_widget(self._info_label)
 
         save_btn = _RoundedButton(text='SAVE', bg_color=(0.22, 0.58, 1.00))
         save_btn.bind(on_press=self._save)
         root.add_widget(save_btn)
 
         root.add_widget(Widget())  # spacer
+
+    def _discover(self, *_):
+        """Run discovery in a background thread to avoid blocking the UI."""
+        self._discover_btn.text = 'Searching...'
+        self._discover_btn.disabled = True
+
+        def _bg_discover():
+            ip = UDPSender.discover_server()
+
+            def _update(*_a):
+                if ip:
+                    self._ip_input.text = ip
+                    self._discover_btn.text = 'Found!'
+                    self._info_label.text = 'PC found at ' + ip
+                    self._info_label.color = (0.15, 0.85, 0.55, 1)
+                else:
+                    self._discover_btn.text = 'Not found'
+                    self._info_label.text = (
+                        'Desktop app not detected.\n'
+                        'Make sure it is running on the same Wi-Fi.'
+                    )
+                    self._info_label.color = (0.85, 0.35, 0.3, 1)
+                self._discover_btn.disabled = False
+                Clock.schedule_once(
+                    lambda *_b: setattr(self._discover_btn, 'text', 'DISCOVER'),
+                    2.5,
+                )
+
+            Clock.schedule_once(_update, 0)
+
+        threading.Thread(target=_bg_discover, daemon=True).start()
 
     def _save(self, *_):
         ip   = self._ip_input.text.strip()
@@ -551,6 +605,7 @@ class SettingsScreen(Screen):
 class AirMouseApp(App):
     def build(self):
         self.title = 'AirMouse'
+        self.icon = 'logo.jpg'
         Window.clearcolor = (0.07, 0.07, 0.10, 1)
 
         self._sensor = SensorListener()

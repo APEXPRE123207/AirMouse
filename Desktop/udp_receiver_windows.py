@@ -116,6 +116,15 @@ class UDPReceiver:
                 self._mark_seen()
                 continue
 
+            # Respond to discovery broadcasts from Android app
+            if payload.get('type') == 'discover':
+                try:
+                    response = json.dumps({"type": "discover_response"}).encode()
+                    self._sock.sendto(response, addr)
+                except OSError:
+                    pass
+                continue
+
             # Validate orientation fields
             try:
                 data = OrientationData(

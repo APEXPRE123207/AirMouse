@@ -7,7 +7,7 @@ package.domain  = com.airmouse
 
 # Source
 source.dir      = src
-source.include_exts = py,png,jpg,kv,atlas,json
+source.include_exts = py,png,jpg,kv,atlas,json,ttf
 
 # Version
 version         = 0.1.0
@@ -36,8 +36,8 @@ android.archs       = arm64-v8a
 # Orientation lock
 orientation = portrait
 
-# Icons (placeholder — replace before release)
-# icon.filename = %(source.dir)s/icon.png
+# Icons
+icon.filename = %(source.dir)s/logo.jpg
 
 # Buildozer internals
 log_level = 2

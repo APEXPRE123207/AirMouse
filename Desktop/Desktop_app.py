@@ -1,223 +1,447 @@
+"""
+AirMouse – Desktop Companion  (Phase 3)
+
+  • Yaw/Pitch → smooth cursor movement (relative mode)
+  • Roll tilt → click / hold-drag / scroll
+  • Auto-calibrate on connect, auto-stop on disconnect
+  • Persisted settings, IP + port display
+"""
+
+import json
+import os
+import socket
 import sys
 import threading
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
+
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QFont, QColor, QPalette, QIcon
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget,
+    QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QPushButton, QSlider, QFrame,
+)
+
 from receiver import AirMouseReceiver
+from mouse_move import CursorController, ClickController
+
+
+# ── Colours ──────────────────────────────────────────────────────────────────
+BG            = "#111118"
+CARD_BG       = "#1a1a24"
+BORDER        = "#2a2a38"
+TEXT_PRIMARY   = "#e8e8f0"
+TEXT_DIM       = "#6a6a7a"
+ACCENT_BLUE    = "#3b8beb"
+ACCENT_GREEN   = "#2ecc71"
+ACCENT_RED     = "#e74c3c"
+ACCENT_ORANGE  = "#f39c12"
+ACCENT_PURPLE  = "#9b59b6"
+
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+LISTEN_PORT   = 5005
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def _card_frame():
+    f = QFrame()
+    f.setStyleSheet(f"""
+        QFrame {{
+            background-color: {CARD_BG};
+            border: 1px solid {BORDER};
+            border-radius: 12px;
+        }}
+    """)
+    return f
+
+
+def _heading(text, size=11, color=TEXT_DIM):
+    lbl = QLabel(text)
+    lbl.setFont(QFont("Segoe UI", size, QFont.Bold))
+    lbl.setStyleSheet(f"color: {color}; background: transparent; border: none;")
+    return lbl
+
+
+def _value_label(text="0.0", size=22, color=TEXT_PRIMARY):
+    lbl = QLabel(text)
+    lbl.setFont(QFont("Segoe UI", size, QFont.Bold))
+    lbl.setStyleSheet(f"color: {color}; background: transparent; border: none;")
+    lbl.setAlignment(Qt.AlignCenter)
+    return lbl
+
+
+def _load_settings():
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_settings(data):
+    try:
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+
+# ── Main window ──────────────────────────────────────────────────────────────
 
 class DesktopApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Desktop App")
-        self.setGeometry(100, 100, 400, 300)
-        self.resize(350, 300)
+        self.setWindowTitle("AirMouse")
+        self.setWindowIcon(QIcon("logo.jpg"))
+        self.setFixedSize(380, 740)
+        self.setStyleSheet(f"background-color: {BG};")
 
-        self.connection_status = "Waiting for Phone"
-        self.calibration_status = "Not Calibrated"
+        self.current_yaw = self.current_pitch = self.current_roll = 0.0
+        self.base_yaw = self.base_pitch = self.base_roll = 0.0
+        self._was_connected = False
+        self._auto_calibrated = False
+        self._click_label_locked = False   # True while showing momentary click text
 
-        # Use pitch/roll/yaw naming (matches UDPReceiver payload)
-        self.current_pitch = 0.0
-        self.current_roll = 0.0
-        self.current_yaw = 0.0
+        self.receiver   = AirMouseReceiver()
+        self.cursor_ctl = CursorController()
+        self.click_ctl  = ClickController()
 
-        self.base_pitch = 0.0
-        self.base_roll = 0.0
-        self.base_yaw = 0.0
-
-        self.delta_pitch = 0.0
-        self.delta_roll = 0.0
-        self.delta_yaw = 0.0
-
-        self.mouse_dpitch = 0.0
-        self.mouse_droll = 0.0
-        self.mouse_dyaw = 0.0
-
-        self.active_axis = "pitch"
-
-        self.receiver = AirMouseReceiver()
-
-        self.initUI()
-        self.start_receiver()
-
-    def initUI(self):
-        layout = QVBoxLayout()
-        layout.setSpacing(10)
-
-        self.status_label = QLabel(f"Status: {self.connection_status}")
-        self.calibration_label = QLabel(f"Calibration: {self.calibration_status}")
-
-
-        self.pitch_label = QLabel("Pitch: 0.000")
-        self.roll_label = QLabel("Roll: 0.000")
-        self.yaw_label = QLabel("Yaw: 0.000")
-
-        self.base_pitch_label = QLabel("Base Pitch: 0.000")
-        self.base_roll_label = QLabel("Base Roll: 0.000")
-        self.base_yaw_label = QLabel("Base Yaw: 0.000")
-
-        self.delta_pitch_label = QLabel("ΔPitch: 0.000")
-        self.delta_roll_label = QLabel("ΔRoll: 0.000")
-        self.delta_yaw_label = QLabel("ΔYaw: 0.000")
-
-        self.mouse_dpitch_label = QLabel("Mouse DPitch: 0")
-        self.mouse_droll_label = QLabel("Mouse DRoll: 0")
-        self.mouse_dyaw_label = QLabel("Mouse DYaw: 0")
-
-        self.active_axis_label = QLabel("Active Axis: X")
-        self.axis_note_label = QLabel("Axis test mode: move the phone and watch which delta changes")
-        self.lr_title_label = QLabel("Left/Right:")
-        self.lr_x_label = QLabel("X score: 0.000")
-        self.lr_y_label = QLabel("Y score: 0.000")
-        self.lr_z_label = QLabel("Z score: 0.000")
-
-        self.ud_title_label = QLabel("Up/Down:")
-        self.ud_x_label = QLabel("X score: 0.000")
-        self.ud_y_label = QLabel("Y score: 0.000")
-        self.ud_z_label = QLabel("Z score: 0.000")
-        self.lr_candidate_label = QLabel("Left/Right candidate: -")
-        self.ud_candidate_label = QLabel("Up/Down candidate: -")
-
-        self.axis_pitch_button = QPushButton("Use Pitch")
-        self.axis_roll_button = QPushButton("Use Roll")
-        self.axis_yaw_button = QPushButton("Use Yaw")
-
-        self.axis_pitch_button.clicked.connect(lambda: self.set_active_axis("pitch"))
-        self.axis_roll_button.clicked.connect(lambda: self.set_active_axis("roll"))
-        self.axis_yaw_button.clicked.connect(lambda: self.set_active_axis("yaw"))
-
-        self.calibrate_button = QPushButton("Calibrate")
-        self.calibrate_button.clicked.connect(self.calibrate)
-
-        layout.addWidget(self.status_label)
-        layout.addWidget(self.calibration_label)
-
-        layout.addWidget(self.pitch_label)
-        layout.addWidget(self.roll_label)
-        layout.addWidget(self.yaw_label)
-
-        layout.addWidget(self.base_pitch_label)
-        layout.addWidget(self.base_roll_label)
-        layout.addWidget(self.base_yaw_label)
-
-        layout.addWidget(self.delta_pitch_label)
-        layout.addWidget(self.delta_roll_label)
-        layout.addWidget(self.delta_yaw_label)
-
-        layout.addWidget(self.mouse_dpitch_label)
-        layout.addWidget(self.mouse_droll_label)
-        layout.addWidget(self.mouse_dyaw_label)
-
-        layout.addWidget(self.active_axis_label)
-        layout.addWidget(self.axis_note_label)
-        layout.addWidget(self.lr_title_label)
-        layout.addWidget(self.lr_x_label)
-        layout.addWidget(self.lr_y_label)
-        layout.addWidget(self.lr_z_label)
-        layout.addWidget(self.ud_title_label)
-        layout.addWidget(self.ud_x_label)
-        layout.addWidget(self.ud_y_label)
-        layout.addWidget(self.ud_z_label)
-        layout.addWidget(self.lr_candidate_label)
-        layout.addWidget(self.ud_candidate_label)
-        layout.addWidget(self.axis_pitch_button)
-        layout.addWidget(self.axis_roll_button)
-        layout.addWidget(self.axis_yaw_button)
-
-        layout.addWidget(self.calibrate_button)
-
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-        self.update_labels()
+        self._settings = _load_settings()
+        self._build_ui()
+        self._apply_saved_settings()
+        self._start_receiver()
 
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_sensor_values)
-        self.timer.start(100)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(16)
 
-    def start_receiver(self):
-        self.receiver_thread = threading.Thread(
-            target=self.receiver.run,
-            daemon=True
-        )
-        self.receiver_thread.start()
+    # ── UI ───────────────────────────────────────────────────────────────
 
-    
-    def update_labels(self):
-        self.delta_pitch = self.current_pitch - self.base_pitch
-        self.delta_roll = self.current_roll - self.base_roll
-        self.delta_yaw = self.current_yaw - self.base_yaw
+    def _build_ui(self):
+        root = QWidget()
+        self.setCentralWidget(root)
+        lay = QVBoxLayout(root)
+        lay.setContentsMargins(16, 20, 16, 14)
+        lay.setSpacing(8)
 
-        self.mouse_dpitch = self.delta_pitch
-        self.mouse_droll = self.delta_roll
-        self.mouse_dyaw = self.delta_yaw
+        # Header
+        hdr = QHBoxLayout()
+        title = QLabel("A I R M O U S E")
+        title.setFont(QFont("Segoe UI", 16, QFont.Bold))
+        title.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        self._status_dot = QLabel("●")
+        self._status_dot.setFont(QFont("Segoe UI", 12))
+        self._status_dot.setStyleSheet(f"color: {TEXT_DIM};")
+        self._status_label = QLabel("Waiting…")
+        self._status_label.setFont(QFont("Segoe UI", 10))
+        self._status_label.setStyleSheet(f"color: {TEXT_DIM};")
+        hdr.addWidget(title); hdr.addStretch()
+        hdr.addWidget(self._status_dot); hdr.addWidget(self._status_label)
+        lay.addLayout(hdr)
 
-        self.status_label.setText(f"Status: {self.connection_status}")
-        self.calibration_label.setText(f"Calibration: {self.calibration_status}")
-        self.pitch_label.setText(f"Pitch: {self.current_pitch:.3f}")
-        self.roll_label.setText(f"Roll: {self.current_roll:.3f}")
-        self.yaw_label.setText(f"Yaw: {self.current_yaw:.3f}")
+        # Network info
+        net = _card_frame()
+        nl = QHBoxLayout(net)
+        nl.setContentsMargins(14, 8, 14, 8)
+        ip_sec = QVBoxLayout(); ip_sec.setSpacing(1)
+        ip_sec.addWidget(_heading("YOUR PC IP", 8))
+        ip_val = QLabel(_get_local_ip())
+        ip_val.setFont(QFont("Consolas", 13, QFont.Bold))
+        ip_val.setStyleSheet(f"color: {ACCENT_BLUE}; background: transparent; border: none;")
+        ip_sec.addWidget(ip_val)
+        port_sec = QVBoxLayout(); port_sec.setSpacing(1)
+        port_sec.addWidget(_heading("PORT", 8))
+        port_val = QLabel(str(LISTEN_PORT))
+        port_val.setFont(QFont("Consolas", 13, QFont.Bold))
+        port_val.setStyleSheet(f"color: {ACCENT_ORANGE}; background: transparent; border: none;")
+        port_sec.addWidget(port_val)
+        nl.addLayout(ip_sec); nl.addStretch(); nl.addLayout(port_sec)
+        lay.addWidget(net)
 
-        self.base_pitch_label.setText(f"Base Pitch: {self.base_pitch:.3f}")
-        self.base_roll_label.setText(f"Base Roll: {self.base_roll:.3f}")
-        self.base_yaw_label.setText(f"Base Yaw: {self.base_yaw:.3f}")
+        # Angles
+        ang = _card_frame()
+        ag = QGridLayout(ang)
+        ag.setContentsMargins(14, 8, 14, 8); ag.setSpacing(2)
+        ag.addWidget(_heading("YAW",   9, ACCENT_BLUE),   0, 0, Qt.AlignCenter)
+        ag.addWidget(_heading("PITCH", 9, ACCENT_GREEN),  0, 1, Qt.AlignCenter)
+        ag.addWidget(_heading("ROLL",  9, ACCENT_ORANGE), 0, 2, Qt.AlignCenter)
+        self._yaw_lbl   = _value_label("0.0°", 17, ACCENT_BLUE)
+        self._pitch_lbl = _value_label("0.0°", 17, ACCENT_GREEN)
+        self._roll_lbl  = _value_label("0.0°", 17, ACCENT_ORANGE)
+        ag.addWidget(self._yaw_lbl, 1, 0)
+        ag.addWidget(self._pitch_lbl, 1, 1)
+        ag.addWidget(self._roll_lbl, 1, 2)
+        lay.addWidget(ang)
 
-        self.delta_pitch_label.setText(f"ΔPitch: {self.delta_pitch:.3f}")
-        self.delta_roll_label.setText(f"ΔRoll: {self.delta_roll:.3f}")
-        self.delta_yaw_label.setText(f"ΔYaw: {self.delta_yaw:.3f}")
+        # Action indicator
+        self._action_lbl = QLabel("")
+        self._action_lbl.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self._action_lbl.setAlignment(Qt.AlignCenter)
+        self._action_lbl.setFixedHeight(22)
+        self._action_lbl.setStyleSheet(f"color: {TEXT_DIM};")
+        lay.addWidget(self._action_lbl)
 
-        self.mouse_dpitch_label.setText(f"Mouse DPitch: {self.mouse_dpitch:.3f}")
-        self.mouse_droll_label.setText(f"Mouse DRoll: {self.mouse_droll:.3f}")
-        self.mouse_dyaw_label.setText(f"Mouse DYaw: {self.mouse_dyaw:.3f}")
-        self.active_axis_label.setText(f"Active Axis: {self.active_axis.upper()}")
+        # Sliders
+        sc = _card_frame()
+        sl = QVBoxLayout(sc)
+        sl.setContentsMargins(14, 10, 14, 10); sl.setSpacing(6)
 
-        # Determine axis candidates by absolute magnitude (Pitch/Roll/Yaw)
-        axes = [("Pitch", abs(self.delta_pitch)), ("Roll", abs(self.delta_roll)), ("Yaw", abs(self.delta_yaw))]
-        axes_sorted = sorted(axes, key=lambda t: t[1], reverse=True)
-        lr_candidate = axes_sorted[0][0] if axes_sorted else "-"
-        ud_candidate = axes_sorted[1][0] if len(axes_sorted) > 1 else "-"
+        self._sens_slider, _ = self._slider(sl, "SENSITIVITY", 1, 30, 10,
+                                            self._on_sensitivity)
+        self._dz_slider, _ = self._slider(sl, "DEAD ZONE", 0, 50, 5,
+                                          self._on_dead_zone,
+                                          fmt=lambda v: f"{v/100:.2f}°")
+        self._sm_slider, _ = self._slider(sl, "SMOOTHING", 10, 100, 100,
+                                          self._on_smoothing,
+                                          fmt=lambda v: f"{v/100:.2f}")
+        self._ct_slider, _ = self._slider(sl, "CLICK TILT", 5, 40, 20,
+                                          self._on_click_threshold,
+                                          fmt=lambda v: f"{v}°")
+        self._st_slider, _ = self._slider(sl, "SCROLL TILT", 20, 55, 35,
+                                          self._on_scroll_threshold,
+                                          fmt=lambda v: f"{v}°")
+        lay.addWidget(sc)
 
-        self.lr_candidate_label.setText(f"Left/Right candidate: {lr_candidate} ({axes_sorted[0][1]:.3f})")
-        if ud_candidate != "-":
-            self.ud_candidate_label.setText(f"Up/Down candidate: {ud_candidate} ({axes_sorted[1][1]:.3f})")
-        else:
-            self.ud_candidate_label.setText("Up/Down candidate: -")
+        # Buttons
+        btns = QHBoxLayout(); btns.setSpacing(10)
+        self._cal_btn = self._btn("CALIBRATE", ACCENT_BLUE)
+        self._cal_btn.clicked.connect(self._calibrate)
+        self._ctrl_btn = self._btn("START", ACCENT_GREEN)
+        self._ctrl_btn.clicked.connect(self._toggle_control)
+        btns.addWidget(self._cal_btn); btns.addWidget(self._ctrl_btn)
+        lay.addLayout(btns)
 
-        # Show raw scores for LR and UD (per-axis, named Pitch/Roll/Yaw)
-        p_score = abs(self.delta_pitch)
-        r_score = abs(self.delta_roll)
-        y_score = abs(self.delta_yaw)
+        lay.addStretch()
 
-        self.lr_x_label.setText(f"Pitch score: {p_score:.3f}")
-        self.lr_y_label.setText(f"Roll score: {r_score:.3f}")
-        self.lr_z_label.setText(f"Yaw score: {y_score:.3f}")
+        hint = QLabel("Quick tilt = click · Hold tilt = drag · Tilt more = scroll")
+        hint.setFont(QFont("Segoe UI", 8))
+        hint.setStyleSheet(f"color: {TEXT_DIM};")
+        hint.setAlignment(Qt.AlignCenter)
+        lay.addWidget(hint)
 
-        self.ud_x_label.setText(f"Pitch score: {p_score:.3f}")
-        self.ud_y_label.setText(f"Roll score: {r_score:.3f}")
-        self.ud_z_label.setText(f"Yaw score: {y_score:.3f}")
+    def _slider(self, parent, label, lo, hi, default, cb, fmt=None):
+        if fmt is None: fmt = str
+        row = QHBoxLayout()
+        lbl = _heading(label, 9)
+        val = QLabel(fmt(default))
+        val.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        val.setStyleSheet(f"color: {TEXT_PRIMARY}; background: transparent; border: none;")
+        val.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row.addWidget(lbl); row.addStretch(); row.addWidget(val)
+        parent.addLayout(row)
+        s = QSlider(Qt.Horizontal)
+        s.setRange(lo, hi); s.setValue(default)
+        s.setStyleSheet(f"""
+            QSlider::groove:horizontal {{ background:{BORDER}; height:6px; border-radius:3px; }}
+            QSlider::handle:horizontal {{ background:{ACCENT_BLUE}; width:16px; height:16px; margin:-5px 0; border-radius:8px; }}
+            QSlider::sub-page:horizontal {{ background:{ACCENT_BLUE}; border-radius:3px; }}
+        """)
+        s.valueChanged.connect(lambda v: (val.setText(fmt(v)), cb(v)))
+        parent.addWidget(s)
+        return s, val
 
-    def set_active_axis(self, axis):
-        self.active_axis = axis
-        self.update_labels()
+    def _btn(self, text, color):
+        b = QPushButton(text)
+        b.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        b.setFixedHeight(44); b.setCursor(Qt.PointingHandCursor)
+        b.setStyleSheet(self._bstyle(color))
+        return b
 
-    def calibrate(self):
+    @staticmethod
+    def _bstyle(c):
+        return f"""QPushButton{{ background-color:{c}; color:white; border:none;
+            border-radius:12px; padding:0 18px; }}
+            QPushButton:hover{{ background-color:{c}cc; }}
+            QPushButton:pressed{{ background-color:{c}99; }}"""
+
+    # ── Settings persistence ─────────────────────────────────────────────
+
+    def _apply_saved_settings(self):
+        s = self._settings
+        for key, slider in [("sensitivity", self._sens_slider),
+                            ("dead_zone", self._dz_slider),
+                            ("smoothing", self._sm_slider),
+                            ("click_threshold", self._ct_slider),
+                            ("scroll_threshold", self._st_slider)]:
+            if key in s:
+                slider.setValue(int(s[key]))
+
+    def _persist(self):
+        _save_settings({
+            "sensitivity":      self._sens_slider.value(),
+            "dead_zone":        self._dz_slider.value(),
+            "smoothing":        self._sm_slider.value(),
+            "click_threshold":  self._ct_slider.value(),
+            "scroll_threshold": self._st_slider.value(),
+        })
+
+    # ── Slider callbacks ─────────────────────────────────────────────────
+
+    def _on_sensitivity(self, v):
+        self.cursor_ctl.set_sensitivity(float(v)); self._persist()
+
+    def _on_dead_zone(self, v):
+        self.cursor_ctl.set_dead_zone(v / 100.0); self._persist()
+
+    def _on_smoothing(self, v):
+        self.cursor_ctl.set_smoothing(v / 100.0); self._persist()
+
+    def _on_click_threshold(self, v):
+        self.click_ctl.set_click_threshold(float(v))
+        self.click_ctl.set_reset_zone(max(5.0, float(v) * 0.5))
+        # Enforce scroll > click
+        if self._st_slider.value() <= v + 5:
+            self._st_slider.setValue(v + 10)
+        self._persist()
+
+    def _on_scroll_threshold(self, v):
+        self.click_ctl.set_scroll_threshold(float(v))
+        # Enforce scroll > click
+        if v <= self._ct_slider.value() + 5:
+            self._ct_slider.setValue(max(5, v - 10))
+        self._persist()
+
+    # ── Buttons ──────────────────────────────────────────────────────────
+
+    def _calibrate(self, silent=False):
+        self.base_yaw   = self.current_yaw
         self.base_pitch = self.current_pitch
-        self.base_roll = self.current_roll
-        self.base_yaw = self.current_yaw
-        self.calibration_status = "Calibrated"
-        self.update_labels()
+        self.base_roll  = self.current_roll
+        if not silent:
+            self._cal_btn.setText("ZEROED")
+            QTimer.singleShot(1200, lambda: self._cal_btn.setText("CALIBRATE"))
 
-    def update_sensor_values(self):
-        # Pull latest orientation from the receiver (yaw/pitch/roll)
-        # UDPReceiver provides .pitch, .roll, .yaw
+    def _toggle_control(self):
+        if self.cursor_ctl.active:
+            self._stop_control()
+        else:
+            self._start_control()
+
+    def _start_control(self):
+        self.cursor_ctl.start(); self.click_ctl.start()
+        self._ctrl_btn.setText("STOP")
+        self._ctrl_btn.setStyleSheet(self._bstyle(ACCENT_RED))
+
+    def _stop_control(self):
+        self.cursor_ctl.stop(); self.click_ctl.stop()
+        self._ctrl_btn.setText("START")
+        self._ctrl_btn.setStyleSheet(self._bstyle(ACCENT_GREEN))
+        self._action_lbl.setText("")
+
+    # ── Receiver ─────────────────────────────────────────────────────────
+
+    def _start_receiver(self):
+        threading.Thread(target=self.receiver.run, daemon=True).start()
+
+    # ── Main loop ────────────────────────────────────────────────────────
+
+    def _tick(self):
+        connected = self.receiver.connected
+
+        # Auto-calibrate on (re)connect
+        if not self._was_connected and connected:
+            QTimer.singleShot(300, lambda: self._calibrate(silent=True))
+
+        # Auto-stop on disconnect
+        if self._was_connected and not connected and self.cursor_ctl.active:
+            self._stop_control()
+
+        self._was_connected = connected
+
+        # Read values
+        self.current_yaw   = self.receiver.yaw
         self.current_pitch = self.receiver.pitch
-        self.current_roll = self.receiver.roll
-        self.current_yaw = self.receiver.yaw
+        self.current_roll  = self.receiver.roll
 
-        self.connection_status = "Connected" if self.receiver.connected else "Waiting for Phone"
-        self.update_labels()
+        dy = self.current_yaw   - self.base_yaw
+        dp = self.current_pitch - self.base_pitch
+        dr = self.current_roll  - self.base_roll
+
+        self._yaw_lbl.setText(f"{dy:+.1f}°")
+        self._pitch_lbl.setText(f"{dp:+.1f}°")
+        self._roll_lbl.setText(f"{dr:+.1f}°")
+
+        if connected:
+            self._status_dot.setStyleSheet(f"color: {ACCENT_GREEN};")
+            self._status_label.setText("Connected")
+            self._status_label.setStyleSheet(f"color: {ACCENT_GREEN};")
+        else:
+            self._status_dot.setStyleSheet(f"color: {TEXT_DIM};")
+            self._status_label.setText("Waiting…")
+            self._status_label.setStyleSheet(f"color: {TEXT_DIM};")
+
+        # Cursor movement
+        self.cursor_ctl.update(self.current_yaw, self.current_pitch)
+
+        # Click / drag / scroll
+        action = self.click_ctl.update(dr)
+
+        # ── Update action indicator ──────────────────────────────────────
+        state = self.click_ctl.state
+        dirn  = self.click_ctl.direction
+
+        if state == ClickController.DRAGGING:
+            arrow = "L" if dirn == 'left' else "R"
+            self._action_lbl.setText(f"DRAGGING {arrow}")
+            self._action_lbl.setStyleSheet(f"color: {ACCENT_RED};")
+            self._click_label_locked = False
+
+        elif state == ClickController.SCROLLING:
+            if dirn == 'left':
+                self._action_lbl.setText("SCROLLING UP")
+            else:
+                self._action_lbl.setText("SCROLLING DOWN")
+            self._action_lbl.setStyleSheet(f"color: {ACCENT_PURPLE};")
+            self._click_label_locked = False
+
+        elif action and 'click' in action:
+            label = "LEFT CLICK" if 'left' in action else "RIGHT CLICK"
+            color = ACCENT_BLUE if 'left' in action else ACCENT_ORANGE
+            self._action_lbl.setText(label)
+            self._action_lbl.setStyleSheet(f"color: {color};")
+            self._click_label_locked = True
+            QTimer.singleShot(700, self._unlock_action_label)
+
+        elif not self._click_label_locked and state == ClickController.IDLE:
+            self._action_lbl.setText("")
+
+    def _unlock_action_label(self):
+        self._click_label_locked = False
+        if self.click_ctl.state == ClickController.IDLE:
+            self._action_lbl.setText("")
+
+    def closeEvent(self, event):
+        self._persist()
+        self.cursor_ctl.stop()
+        self.click_ctl.stop()
+        event.accept()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = DesktopApp()
-    window.show()
+    app.setStyle("Fusion")
+    pal = QPalette()
+    pal.setColor(QPalette.Window,          QColor(BG))
+    pal.setColor(QPalette.WindowText,      QColor(TEXT_PRIMARY))
+    pal.setColor(QPalette.Base,            QColor(CARD_BG))
+    pal.setColor(QPalette.AlternateBase,   QColor(CARD_BG))
+    pal.setColor(QPalette.Text,            QColor(TEXT_PRIMARY))
+    pal.setColor(QPalette.Button,          QColor(CARD_BG))
+    pal.setColor(QPalette.ButtonText,      QColor(TEXT_PRIMARY))
+    pal.setColor(QPalette.Highlight,       QColor(ACCENT_BLUE))
+    pal.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+    app.setPalette(pal)
+    w = DesktopApp()
+    w.show()
     sys.exit(app.exec_())
