@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# VS Code settings
+.vscode/
+
+# Local configuration
+Desktop/settings.json
+
+# Scratch files / Notes
+xtra
+todo.txt
+
+# Android / Buildozer (Kivy)
+.buildozer/
+bin/
+
+# macOS / Windows OS generated files
+.DS_Store
+Thumbs.db
