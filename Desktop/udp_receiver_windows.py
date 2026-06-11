@@ -15,6 +15,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from auth import Authenticator
+
 DEFAULT_HOST    = '0.0.0.0'
 DEFAULT_PORT    = 5005
 TIMEOUT_SECONDS = 3.0        # declare connection lost after this many seconds
@@ -59,9 +61,22 @@ class UDPReceiver:
         self._running  = False
         self._connected = False
         self._last_seen = 0.0
+        self._pending_calibrate = False
+        self._pending_home = False
+
+        # PIN-based pairing
+        self._auth = Authenticator()
 
         # Latest values (thread-safe reads are fine for floats in CPython)
         self.latest = OrientationData()
+
+    @property
+    def pin(self):
+        return self._auth.pin
+
+    def regenerate_pin(self):
+        """Generate a new PIN and clear all authorized devices."""
+        self._auth.regenerate_pin()
 
     # ── Public API ──────────────────────────────────────────────────────
 
@@ -111,18 +126,51 @@ class UDPReceiver:
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
 
-            # Ignore heartbeat pings
-            if payload.get('type') == 'heartbeat':
-                self._mark_seen()
-                continue
+            ptype = payload.get('type')
+
+            # ── Always allowed (no auth) ──────────────────────────────
 
             # Respond to discovery broadcasts from Android app
-            if payload.get('type') == 'discover':
+            if ptype == 'discover':
                 try:
                     response = json.dumps({"type": "discover_response"}).encode()
                     self._sock.sendto(response, addr)
                 except OSError:
                     pass
+                continue
+
+            # Handle pairing requests
+            if ptype == 'pair':
+                pin = str(payload.get('pin', ''))
+                if self._auth.handle_pair_request(addr, pin):
+                    resp = {"type": "pair_response", "status": "ok"}
+                else:
+                    resp = {"type": "pair_response", "status": "denied"}
+                try:
+                    self._sock.sendto(json.dumps(resp).encode(), addr)
+                except OSError:
+                    pass
+                continue
+
+            # ── Auth required below this point ────────────────────────
+            if not self._auth.is_authorized(addr):
+                continue
+
+            # Heartbeat pings
+            if ptype == 'heartbeat':
+                self._mark_seen()
+                continue
+
+            # Remote calibrate command from phone
+            if ptype == 'calibrate':
+                self._mark_seen()
+                self._pending_calibrate = True
+                continue
+
+            # Remote home (center cursor) command from phone
+            if ptype == 'home':
+                self._mark_seen()
+                self._pending_home = True
                 continue
 
             # Validate orientation fields

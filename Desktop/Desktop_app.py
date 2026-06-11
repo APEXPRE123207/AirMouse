@@ -22,7 +22,8 @@ from PyQt5.QtWidgets import (
 )
 
 from receiver import AirMouseReceiver
-from mouse_move import CursorController, ClickController
+from mouse_move import CursorController, ClickController, _get_screen_size, _set_cursor_pos
+from calib_wizard import ClickCalibWizard
 
 
 # ── Colours ──────────────────────────────────────────────────────────────────
@@ -120,11 +121,19 @@ class DesktopApp(QMainWindow):
         self._settings = _load_settings()
         self._build_ui()
         self._apply_saved_settings()
+        
+        self.wizard = ClickCalibWizard(self, self._on_wizard_complete)
+        self.wizard.hide()
+
         self._start_receiver()
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(16)
+        
+        # Show wizard on first run if no calibration data exists
+        if 'err_left_yaw' not in self._settings:
+            self._open_wizard()
 
     # ── UI ───────────────────────────────────────────────────────────────
 
@@ -154,19 +163,29 @@ class DesktopApp(QMainWindow):
         net = _card_frame()
         nl = QHBoxLayout(net)
         nl.setContentsMargins(14, 8, 14, 8)
+        
         ip_sec = QVBoxLayout(); ip_sec.setSpacing(1)
         ip_sec.addWidget(_heading("YOUR PC IP", 8))
         ip_val = QLabel(_get_local_ip())
         ip_val.setFont(QFont("Consolas", 13, QFont.Bold))
         ip_val.setStyleSheet(f"color: {ACCENT_BLUE}; background: transparent; border: none;")
         ip_sec.addWidget(ip_val)
+        
+        pin_sec = QVBoxLayout(); pin_sec.setSpacing(1)
+        pin_sec.addWidget(_heading("PIN", 8))
+        self._pin_val = QLabel(self.receiver.pin)
+        self._pin_val.setFont(QFont("Consolas", 13, QFont.Bold))
+        self._pin_val.setStyleSheet(f"color: {ACCENT_GREEN}; background: transparent; border: none;")
+        pin_sec.addWidget(self._pin_val)
+
         port_sec = QVBoxLayout(); port_sec.setSpacing(1)
         port_sec.addWidget(_heading("PORT", 8))
         port_val = QLabel(str(LISTEN_PORT))
         port_val.setFont(QFont("Consolas", 13, QFont.Bold))
         port_val.setStyleSheet(f"color: {ACCENT_ORANGE}; background: transparent; border: none;")
         port_sec.addWidget(port_val)
-        nl.addLayout(ip_sec); nl.addStretch(); nl.addLayout(port_sec)
+        
+        nl.addLayout(ip_sec); nl.addStretch(); nl.addLayout(pin_sec); nl.addStretch(); nl.addLayout(port_sec)
         lay.addWidget(net)
 
         # Angles
@@ -197,7 +216,7 @@ class DesktopApp(QMainWindow):
         sl = QVBoxLayout(sc)
         sl.setContentsMargins(14, 10, 14, 10); sl.setSpacing(6)
 
-        self._sens_slider, _ = self._slider(sl, "SENSITIVITY", 1, 30, 10,
+        self._sens_slider, _ = self._slider(sl, "SENSITIVITY", 1, 30, 30,
                                             self._on_sensitivity)
         self._dz_slider, _ = self._slider(sl, "DEAD ZONE", 0, 50, 5,
                                           self._on_dead_zone,
@@ -219,8 +238,14 @@ class DesktopApp(QMainWindow):
         self._cal_btn.clicked.connect(self._calibrate)
         self._ctrl_btn = self._btn("START", ACCENT_GREEN)
         self._ctrl_btn.clicked.connect(self._toggle_control)
+        
         btns.addWidget(self._cal_btn); btns.addWidget(self._ctrl_btn)
         lay.addLayout(btns)
+        
+        cb_btn = self._btn("CLICK CALIB (DRIFT FIX)", ACCENT_PURPLE)
+        cb_btn.setFixedHeight(34)
+        cb_btn.clicked.connect(self._open_wizard)
+        lay.addWidget(cb_btn)
 
         lay.addStretch()
 
@@ -276,15 +301,28 @@ class DesktopApp(QMainWindow):
                             ("scroll_threshold", self._st_slider)]:
             if key in s:
                 slider.setValue(int(s[key]))
+                
+        # Apply calibration errors to cursor controller
+        self.cursor_ctl.set_calibration_errors(
+            s.get('err_left_yaw', 0.0), s.get('err_left_pitch', 0.0),
+            s.get('err_right_yaw', 0.0), s.get('err_right_pitch', 0.0)
+        )
 
     def _persist(self):
-        _save_settings({
+        s = {
             "sensitivity":      self._sens_slider.value(),
             "dead_zone":        self._dz_slider.value(),
             "smoothing":        self._sm_slider.value(),
             "click_threshold":  self._ct_slider.value(),
             "scroll_threshold": self._st_slider.value(),
-        })
+        }
+        # Keep calibration data
+        for k in ['err_left_yaw', 'err_left_pitch', 'err_right_yaw', 'err_right_pitch']:
+            if k in self._settings:
+                s[k] = self._settings[k]
+                
+        _save_settings(s)
+        self._settings = s
 
     # ── Slider callbacks ─────────────────────────────────────────────────
 
@@ -339,6 +377,12 @@ class DesktopApp(QMainWindow):
         self._ctrl_btn.setStyleSheet(self._bstyle(ACCENT_GREEN))
         self._action_lbl.setText("")
 
+    def _center_cursor(self):
+        """Move cursor to screen centre and recalibrate."""
+        w, h = _get_screen_size()
+        _set_cursor_pos(w // 2, h // 2)
+        self._calibrate(silent=True)
+
     # ── Receiver ─────────────────────────────────────────────────────────
 
     def _start_receiver(self):
@@ -349,15 +393,22 @@ class DesktopApp(QMainWindow):
     def _tick(self):
         connected = self.receiver.connected
 
-        # Auto-calibrate on (re)connect
+        # Auto-calibrate + auto-start on (re)connect
         if not self._was_connected and connected:
             QTimer.singleShot(300, lambda: self._calibrate(silent=True))
+            QTimer.singleShot(400, self._start_control)
 
         # Auto-stop on disconnect
         if self._was_connected and not connected and self.cursor_ctl.active:
             self._stop_control()
 
         self._was_connected = connected
+
+        # Poll for remote commands from phone
+        if self.receiver.poll_calibrate():
+            self._calibrate(silent=True)
+        if self.receiver.poll_home():
+            self._center_cursor()
 
         # Read values
         self.current_yaw   = self.receiver.yaw
@@ -381,15 +432,13 @@ class DesktopApp(QMainWindow):
             self._status_label.setText("Waiting…")
             self._status_label.setStyleSheet(f"color: {TEXT_DIM};")
 
-        # ── Anti-Jitter Click Stabilization ──────────────────────────────
-        # Freeze cursor movement when rolling past 8° to prevent slip before clicking,
-        # but ALLOW cursor movement if we are actively dragging so the user can drag!
-        is_rolling   = abs(dr) > 8.0
-        is_dragging  = self.click_ctl.state == ClickController.DRAGGING
-        pause_cursor = is_rolling and not is_dragging
+        # Check if wizard is active
+        if hasattr(self, 'wizard') and self.wizard.isVisible():
+            self.wizard.update_sensor(self.current_yaw, self.current_pitch, dr)
+            return
 
         # Cursor movement
-        self.cursor_ctl.update(self.current_yaw, self.current_pitch, paused=pause_cursor)
+        self.cursor_ctl.update(self.current_yaw, self.current_pitch, dr)
 
         # Click / drag / scroll
         action = self.click_ctl.update(dr)
@@ -427,6 +476,26 @@ class DesktopApp(QMainWindow):
         self._click_label_locked = False
         if self.click_ctl.state == ClickController.IDLE:
             self._action_lbl.setText("")
+
+    def _open_wizard(self):
+        self.wizard.state = "INTRO"
+        self.wizard.btn.setText("START")
+        self.wizard.btn.show()
+        self.wizard.skip_btn.show()
+        self.wizard.title.setText("Click Calibration")
+        self.wizard.title.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        self.wizard.msg.setText(
+            "When you twist your wrist to click, the cursor often drifts.\\n\\n"
+            "Let's measure that drift and cancel it out automatically!"
+        )
+        self.wizard.show()
+        self.wizard.raise_()
+
+    def _on_wizard_complete(self, results):
+        if results:
+            self._settings.update(results)
+            self._persist()
+            self._apply_saved_settings()
 
     def closeEvent(self, event):
         self._persist()

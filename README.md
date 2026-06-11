@@ -28,6 +28,20 @@ Welcome to **AirMouse**, the project born out of the absolute refusal to get off
 *   **Auto-Calibration:** Your PC zeroes the axes the exact millisecond the phone connects. No more cursors flying off into the top right corner of your monitor.
 *   **Safety Cutoff:** If your phone dies or disconnects, the cursor stops dead in its tracks. No infinite loops, no runaway cursors, no ghost interactions.
 *   **Premium Dark UI:** Because staring at white screens is blinding. Custom sliders, saved preferences, and FontAwesome icons.
+*   **PIN Authorization:** No rogue cursors. A dynamic 4-digit PIN secures your session.
+*   **Real-time Inverse Kinematics:** An interactive "Drift Fix" wizard actively cancels out your physiological wrist twitch when clicking.
+
+---
+
+## 📅 Version History
+
+*   **v1:** The "Proof of Concept". Raw sensor data blasted to the PC resulting in a violently vibrating cursor.
+*   **v2:** The "Actually Usable" update. Added basic smoothing and deadzones, making the cursor controllable but lacking clicks or a UI.
+*   **v3:** The "Feature Complete" update. Added relative cursor mapping, auto-discovery, roll-to-click gestures, and the base PyQt5 UI.
+*   **-> v4:** The "Clean & Secure" update. Modular UI architecture, 4-digit PIN authorization pairing, and the interactive Inverse Kinematics Click Drift Fix wizard.
+*   **v5\*:** The "Machine Learning" update. Personalized natural gesture recognition for clicking (learns your exact wrist twitch).
+
+*\* indicates planned future version*
 
 ---
 
@@ -37,10 +51,8 @@ Because software is never actually "done," here are the things I might add when 
 
 *   [ ] **Bluetooth (BLE) Fallback:** Because sometimes Wi-Fi routers decide to stop working for absolutely no reason.
 *   [ ] **macOS / Linux Support:** Currently built on Windows `ctypes`. Will eventually add `pynput` for the 3 people who want to air-mouse their Arch Linux setup.
-*   [ ] **Security/Pairing PIN:** Right now, anyone on your Wi-Fi with this app can hijack your cursor. It’s a feature if you like chaos, but I should probably add a PIN code.
 *   [ ] **Background Service:** Let the Android app stream data while the screen is off so it doesn't drain your battery in 45 minutes.
 *   [ ] **Custom Keybinds:** Map a violent wrist flick to Alt+F4. The possibilities are endless.
-*   [ ] **Double Click Detection:** Two rapid shakes to double-click, because doing it twice slowly is boring.
 
 ---
 
@@ -57,14 +69,18 @@ Because software is never actually "done," here are the things I might add when 
 If you're brave enough to read the source code, here's what everything does:
 
 **Android App**
-*   `Android/src/main.py`: The Kivy frontend. It handles the UI, hooks into the native Android `SensorManager` via Pyjnius, and figures out how much your hand is shaking.
-*   `Android/src/udp_sender.py`: The network worker. It violently blasts the sensor data over Wi-Fi and handles the auto-discovery so you don't have to type IP addresses.
+*   `Android/src/main.py`: The Kivy frontend entry point. Hooks into the native Android `SensorManager` via Pyjnius to stream orientation.
+*   `Android/src/ui_components.py`: Beautiful, modularized Kivy widgets (sliders, cards, buttons) to keep the UI clean.
+*   `Android/src/settings_screen.py`: Handles Auto-Discovery, IP inputs, and PIN authorization logic.
+*   `Android/src/udp_sender.py`: The network worker. It violently blasts the sensor data over Wi-Fi.
 *   `Android/buildozer.spec`: The configuration file that tells the build system how to compile Python into a valid Android APK without crashing.
 
 **Desktop App**
-*   `Desktop/Desktop_app.py`: The sleek PyQt5 control center. This runs the main 60Hz loop, handles the auto-calibration, and gives you sliders to tweak everything.
-*   `Desktop/mouse_move.py`: The Windows `ctypes` witchcraft. It takes raw angles and translates them into actual cursor movements, clicks, drags, and scrolls on your monitor.
-*   `Desktop/udp_receiver_windows.py`: The background listener. It intercepts the UDP packets sent by your phone and responds to auto-discovery pings from the network.
+*   `Desktop/Desktop_app.py`: The sleek PyQt5 control center. This runs the main 60Hz loop and connects the UI with the tracking engine.
+*   `Desktop/calib_wizard.py`: The interactive popup wizard that records your physiological wrist twist for the Drift Fix engine.
+*   `Desktop/auth.py`: Generates the 4-digit PINs and authorizes incoming network streams.
+*   `Desktop/mouse_move.py`: The Windows `ctypes` witchcraft and Inverse Kinematics engine. Translates raw angles into stabilized cursor movements.
+*   `Desktop/udp_receiver_windows.py`: The background listener. It intercepts the UDP packets sent by your phone.
 
 ---
 

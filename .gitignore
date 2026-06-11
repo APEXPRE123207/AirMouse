@@ -32,3 +32,4 @@ bin/
 # macOS / Windows OS generated files
 .DS_Store
 Thumbs.db
+Prototypes/Desktop/Assets/mobile_data.json

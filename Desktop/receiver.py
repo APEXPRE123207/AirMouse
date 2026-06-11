@@ -30,6 +30,13 @@ class AirMouseReceiver:
             on_disconnect=self._on_disconnect,
         )
 
+    @property
+    def pin(self):
+        return self._udp.pin
+
+    def regenerate_pin(self):
+        self._udp.regenerate_pin()
+
     def _on_data(self, data):
         # OrientationData has yaw, pitch, roll
         self.yaw = float(data.yaw)
@@ -49,6 +56,20 @@ class AirMouseReceiver:
 
     def _on_disconnect(self):
         self.connected = False
+
+    def poll_calibrate(self):
+        """Return True once if a remote calibrate command was received."""
+        if self._udp._pending_calibrate:
+            self._udp._pending_calibrate = False
+            return True
+        return False
+
+    def poll_home(self):
+        """Return True once if a remote home command was received."""
+        if self._udp._pending_home:
+            self._udp._pending_home = False
+            return True
+        return False
 
     def run(self):
         """Start the UDPReceiver and block until the process is stopped.

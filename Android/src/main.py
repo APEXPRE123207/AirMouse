@@ -36,6 +36,8 @@ from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.animation import Animation
 
 from udp_sender import UDPSender, DEFAULT_PORT
+from ui_components import GaugeBar, AngleCard, StatusDot, RoundedButton
+from settings_screen import SettingsScreen
 
 # ── Android bridge ───────────────────────────────────────────────────────────
 try:
@@ -144,173 +146,6 @@ class SensorListener:
         self._active = False
 
 
-# ── Visual widgets ───────────────────────────────────────────────────────────
-
-class GaugeBar(Widget):
-    """
-    Horizontal bar gauge: filled from centre outward.
-    color: (r, g, b)
-    """
-    def __init__(self, color, **kwargs):
-        super().__init__(**kwargs)
-        self._color = color
-        self._value = 0.0   # -1.0 .. +1.0
-        self.bind(pos=self._draw, size=self._draw)
-
-    def set_value(self, degrees, max_deg=90.0):
-        self._value = max(-1.0, min(1.0, degrees / max_deg))
-        self._draw()
-
-    def _draw(self, *_):
-        self.canvas.clear()
-        w, h = self.size
-        cx = self.x + w / 2
-        cy = self.y + h / 2
-        r, g, b = self._color
-
-        with self.canvas:
-            # Track
-            Color(r, g, b, 0.12)
-            RoundedRectangle(pos=(self.x, cy - dp(3)),
-                             size=(w, dp(6)),
-                             radius=[dp(3)])
-            # Centre tick
-            Color(r, g, b, 0.3)
-            Line(points=[cx, cy - dp(6), cx, cy + dp(6)], width=dp(1))
-
-            # Fill bar
-            fill_w = abs(self._value) * (w / 2)
-            if fill_w > 0:
-                Color(r, g, b, 0.85)
-                if self._value >= 0:
-                    RoundedRectangle(pos=(cx, cy - dp(4)),
-                                     size=(fill_w, dp(8)),
-                                     radius=[dp(4)])
-                else:
-                    RoundedRectangle(pos=(cx - fill_w, cy - dp(4)),
-                                     size=(fill_w, dp(8)),
-                                     radius=[dp(4)])
-
-            # Indicator dot
-            dot_x = cx + self._value * (w / 2)
-            Color(r, g, b, 1.0)
-            Ellipse(pos=(dot_x - dp(6), cy - dp(6)), size=(dp(12), dp(12)))
-            Color(0.08, 0.08, 0.12, 1)
-            Ellipse(pos=(dot_x - dp(3), cy - dp(3)), size=(dp(6), dp(6)))
-
-
-class AngleCard(BoxLayout):
-    """Card showing one angle with label, big value, and gauge."""
-
-    ICONS = {'YAW': '↔', 'PITCH': '↕', 'ROLL': '↻'}
-
-    def __init__(self, axis, label_text, color, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
-        self.padding  = [dp(18), dp(14), dp(18), dp(10)]
-        self.spacing  = dp(4)
-        self._color   = color
-        r, g, b       = color
-
-        # Card background
-        with self.canvas.before:
-            Color(r, g, b, 0.08)
-            self._bg = RoundedRectangle(radius=[dp(20)])
-            Color(r, g, b, 0.22)
-            self._border = RoundedRectangle(radius=[dp(20)])
-
-        self.bind(pos=self._upd_bg, size=self._upd_bg)
-
-        # Top row: icon + label on left, small axis tag on right
-        top = BoxLayout(size_hint_y=None, height=dp(26))
-        icon_lbl = Label(
-            text=f'{self.ICONS.get(axis, "")}  {label_text}',
-            font_size=sp(12), bold=True,
-            color=(r, g, b, 0.9),
-            halign='left', valign='middle',
-        )
-        icon_lbl.bind(size=icon_lbl.setter('text_size'))
-        axis_tag = Label(
-            text=axis,
-            font_size=sp(10), bold=True,
-            color=(r, g, b, 0.4),
-            halign='right', valign='middle',
-        )
-        axis_tag.bind(size=axis_tag.setter('text_size'))
-        top.add_widget(icon_lbl)
-        top.add_widget(axis_tag)
-        self.add_widget(top)
-
-        # Big value
-        self._val_lbl = Label(
-            text='  0.0°',
-            font_size=sp(42), bold=True,
-            color=(1, 1, 1, 1),
-            halign='left', valign='middle',
-        )
-        self._val_lbl.bind(size=self._val_lbl.setter('text_size'))
-        self.add_widget(self._val_lbl)
-
-        # Gauge bar
-        self._gauge = GaugeBar(color=color, size_hint_y=None, height=dp(24))
-        self.add_widget(self._gauge)
-
-    def _upd_bg(self, *_):
-        bw = dp(1)
-        self._bg.pos    = self.pos
-        self._bg.size   = self.size
-        self._border.pos  = (self.x + bw, self.y + bw)
-        self._border.size = (self.width - bw * 2, self.height - bw * 2)
-
-    def set_value(self, v):
-        sign = '+' if v >= 0 else ''
-        self._val_lbl.text = f'{sign}{v:.1f}°'
-        self._gauge.set_value(v)
-        # Colour intensity: brighter when further from zero
-        intensity = min(1.0, abs(v) / 45.0)
-        r, g, b = self._color
-        self._val_lbl.color = (
-            0.7 + 0.3 * intensity * r,
-            0.7 + 0.3 * intensity * g,
-            0.7 + 0.3 * intensity * b,
-            1.0,
-        )
-
-
-class _StatusDot(Widget):
-    def __init__(self, **kwargs):
-        super().__init__(size_hint=(None, None), size=(dp(10), dp(10)), **kwargs)
-        with self.canvas:
-            self._col = Color(0.35, 0.35, 0.4, 1)
-            self._dot = Ellipse(pos=self.pos, size=self.size)
-        self.bind(pos=lambda *_: setattr(self._dot, 'pos', self.pos))
-
-    def set_active(self, active):
-        self._col.rgba = (0.15, 0.9, 0.45, 1) if active else (0.35, 0.35, 0.4, 1)
-
-
-class _RoundedButton(Button):
-    def __init__(self, text='', bg_color=(0.2, 0.6, 1.0), **kwargs):
-        super().__init__(
-            text=text, font_size=sp(14), bold=True, markup=True,
-            color=(1, 1, 1, 1),
-            background_color=(0, 0, 0, 0), **kwargs
-        )
-        self._bg_color = bg_color
-        with self.canvas.before:
-            self._col  = Color(*bg_color, 0.88)
-            self._rect = RoundedRectangle(radius=[dp(14)])
-        self.bind(
-            pos =lambda *_: setattr(self._rect, 'pos',  self.pos),
-            size=lambda *_: setattr(self._rect, 'size', self.size),
-        )
-
-    def on_press(self):
-        self._col.a = 0.65
-
-    def on_release(self):
-        self._col.a = 0.88
-
-
 # ── Main screen ──────────────────────────────────────────────────────────────
 
 class MainScreen(Screen):
@@ -352,11 +187,11 @@ class MainScreen(Screen):
         )
         self._status_lbl.bind(size=self._status_lbl.setter('text_size'))
 
-        self._dot = _StatusDot()
+        self._status_dot = StatusDot()
 
         hdr.add_widget(title)
         hdr.add_widget(self._status_lbl)
-        hdr.add_widget(self._dot)
+        hdr.add_widget(self._status_dot)
         root.add_widget(hdr)
 
         # ── Angle cards ───────────────────────────────────────────────────
@@ -368,22 +203,37 @@ class MainScreen(Screen):
             root.add_widget(card)
 
         # ── Action buttons ────────────────────────────────────────────────
-        btns = GridLayout(
+        btn_box = GridLayout(
             cols=2, size_hint_y=None, height=dp(52), spacing=dp(10)
         )
-        self._cal_btn = _RoundedButton(
-            text='[font=fa-solid-900.ttf]\uf192[/font]  SET ZERO', bg_color=(0.22, 0.58, 1.00)
-        )
-        self._cal_btn.bind(on_press=self._calibrate)
+        root.add_widget(btn_box)
 
-        self._tx_btn = _RoundedButton(
-            text='[font=fa-solid-900.ttf]\uf04b[/font]  STREAM', bg_color=(0.15, 0.75, 0.45)
+        # Play button
+        self._play_btn = RoundedButton(
+            text='[font=fa-solid-900.ttf]\uf04b[/font]  START STREAM',
+            bg_color=(0.15, 0.75, 0.45),
+            size_hint_y=None, height=dp(56)
         )
-        self._tx_btn.bind(on_press=self._toggle_stream)
+        self._play_btn.bind(on_press=self._toggle_stream)
+        btn_box.add_widget(self._play_btn)
 
-        btns.add_widget(self._cal_btn)
-        btns.add_widget(self._tx_btn)
-        root.add_widget(btns)
+        # Set Zero (Calibrate) button
+        self._zero_btn = RoundedButton(
+            text='[font=fa-solid-900.ttf]\uf140[/font]  SET ZERO',
+            bg_color=(0.22, 0.58, 1.0),
+            size_hint_y=None, height=dp(56)
+        )
+        self._zero_btn.bind(on_press=self._calibrate)
+        btn_box.add_widget(self._zero_btn)
+
+        # Center Cursor button
+        self._center_btn = RoundedButton(
+            text='[font=fa-solid-900.ttf]\uf05b[/font]  CENTER CURSOR',
+            bg_color=(0.6, 0.2, 0.8),
+            size_hint_y=None, height=dp(56)
+        )
+        self._center_btn.bind(on_press=self._center_cursor)
+        root.add_widget(self._center_btn)
 
         # ── Settings link ─────────────────────────────────────────────────
         cfg = Button(
@@ -404,9 +254,17 @@ class MainScreen(Screen):
         self._offset['yaw']   = self._sensor.yaw
         self._offset['pitch'] = self._sensor.pitch
         self._offset['roll']  = self._sensor.roll
+        self._sender.send_command('calibrate')
         self._cal_btn.text = '[font=fa-solid-900.ttf]\uf00c[/font]  ZEROED'
         Clock.schedule_once(
             lambda *_: setattr(self._cal_btn, 'text', '[font=fa-solid-900.ttf]\uf192[/font]  SET ZERO'), 1.5
+        )
+
+    def _center_cursor(self, *_):
+        self._sender.send_command('home')
+        self._home_btn.text = '[font=fa-solid-900.ttf]\uf00c[/font]  CENTERED'
+        Clock.schedule_once(
+            lambda *_: setattr(self._home_btn, 'text', '[font=fa-solid-900.ttf]\uf015[/font]  CENTER CURSOR'), 1.5
         )
 
     def _toggle_stream(self, *_):
@@ -455,150 +313,6 @@ class MainScreen(Screen):
 
         if self._tx_enabled:
             self._sender.send(yaw, pitch, roll)
-
-
-# ── Settings screen ──────────────────────────────────────────────────────────
-
-class SettingsScreen(Screen):
-    def __init__(self, sender, **kwargs):
-        super().__init__(name='settings', **kwargs)
-        self._sender = sender
-
-        root = BoxLayout(
-            orientation='vertical',
-            padding=[dp(20), dp(52), dp(20), dp(28)],
-            spacing=dp(14),
-        )
-        self.add_widget(root)
-
-        # Header
-        hdr = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(4))
-        back = Button(
-            text='[font=fa-solid-900.ttf]\uf060[/font]', font_size=sp(20), markup=True,
-            color=(0.7, 0.7, 0.75, 1),
-            background_color=(0, 0, 0, 0),
-            size_hint_x=None, width=dp(44),
-        )
-        back.bind(on_press=lambda *_: setattr(self.manager, 'current', 'main'))
-        hdr.add_widget(back)
-        hdr.add_widget(Label(
-            text='S E T T I N G S', font_size=sp(16), bold=True,
-            color=(0.95, 0.95, 0.98, 1), halign='left', valign='middle',
-        ))
-        root.add_widget(hdr)
-
-        # Separator
-        sep = Widget(size_hint_y=None, height=dp(1))
-        with sep.canvas:
-            Color(0.2, 0.2, 0.25, 1)
-            RoundedRectangle(pos=sep.pos, size=sep.size)
-        sep.bind(pos=lambda w, v: setattr(sep.canvas.children[-1], 'pos', v))
-        sep.bind(size=lambda w, v: setattr(sep.canvas.children[-1], 'size', v))
-        root.add_widget(sep)
-
-        def field_label(text):
-            return Label(
-                text=text, font_size=sp(11), bold=True,
-                color=(0.5, 0.5, 0.55, 1),
-                halign='left', valign='middle',
-                size_hint_y=None, height=dp(20),
-            )
-
-        def text_field(hint, text='', input_filter=None):
-            tf = TextInput(
-                text=text, hint_text=hint,
-                multiline=False,
-                font_size=sp(17),
-                size_hint_y=None, height=dp(50),
-                foreground_color=(0.95, 0.95, 0.98, 1),
-                hint_text_color=(0.35, 0.35, 0.4, 1),
-                background_color=(0.10, 0.10, 0.15, 1),
-                cursor_color=(0.22, 0.58, 1.0, 1),
-                padding=[dp(14), dp(14)],
-            )
-            if input_filter:
-                tf.input_filter = input_filter
-            return tf
-
-        # ── IP field + Discover button ────────────────────────────────────
-        root.add_widget(field_label('PC IP ADDRESS'))
-
-        ip_row = BoxLayout(
-            orientation='horizontal',
-            size_hint_y=None, height=dp(50),
-            spacing=dp(8),
-        )
-        self._ip_input = text_field('e.g. 192.168.1.100', self._sender.host or '')
-        self._ip_input.size_hint_x = 0.65
-
-        self._discover_btn = _RoundedButton(
-            text='DISCOVER', bg_color=(0.5, 0.35, 0.8)
-        )
-        self._discover_btn.size_hint_x = 0.35
-        self._discover_btn.bind(on_press=self._discover)
-
-        ip_row.add_widget(self._ip_input)
-        ip_row.add_widget(self._discover_btn)
-        root.add_widget(ip_row)
-
-        root.add_widget(field_label('UDP PORT'))
-        self._port_input = text_field(str(DEFAULT_PORT), str(self._sender.port), 'int')
-        root.add_widget(self._port_input)
-
-        # Info
-        self._info_label = Label(
-            text='Tap DISCOVER to auto-find your PC,\nor enter the IP manually.',
-            font_size=sp(12),
-            color=(0.38, 0.38, 0.43, 1),
-            halign='left', valign='top',
-            size_hint_y=None, height=dp(52),
-        )
-        self._info_label.bind(size=self._info_label.setter('text_size'))
-        root.add_widget(self._info_label)
-
-        save_btn = _RoundedButton(text='SAVE', bg_color=(0.22, 0.58, 1.00))
-        save_btn.bind(on_press=self._save)
-        root.add_widget(save_btn)
-
-        root.add_widget(Widget())  # spacer
-
-    def _discover(self, *_):
-        """Run discovery in a background thread to avoid blocking the UI."""
-        self._discover_btn.text = 'Searching...'
-        self._discover_btn.disabled = True
-
-        def _bg_discover():
-            ip = UDPSender.discover_server()
-
-            def _update(*_a):
-                if ip:
-                    self._ip_input.text = ip
-                    self._discover_btn.text = 'Found!'
-                    self._info_label.text = 'PC found at ' + ip
-                    self._info_label.color = (0.15, 0.85, 0.55, 1)
-                else:
-                    self._discover_btn.text = 'Not found'
-                    self._info_label.text = (
-                        'Desktop app not detected.\n'
-                        'Make sure it is running on the same Wi-Fi.'
-                    )
-                    self._info_label.color = (0.85, 0.35, 0.3, 1)
-                self._discover_btn.disabled = False
-                Clock.schedule_once(
-                    lambda *_b: setattr(self._discover_btn, 'text', 'DISCOVER'),
-                    2.5,
-                )
-
-            Clock.schedule_once(_update, 0)
-
-        threading.Thread(target=_bg_discover, daemon=True).start()
-
-    def _save(self, *_):
-        ip   = self._ip_input.text.strip()
-        port = int(self._port_input.text.strip() or DEFAULT_PORT)
-        self._sender.set_target(ip, port)
-        self.manager.current = 'main'
-
 
 # ── App ──────────────────────────────────────────────────────────────────────
 

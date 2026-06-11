@@ -108,6 +108,46 @@ class UDPSender:
         self.host = host
         self.port = port
 
+    def send_command(self, command):
+        """Queue a control command (e.g. 'calibrate', 'home')."""
+        if not self._running or not self.host:
+            return
+        packet = json.dumps({'type': command}).encode()
+        try:
+            self._queue.put_nowait(packet)
+        except queue.Full:
+            pass
+
+    @staticmethod
+    def pair_with_server(host, port, pin, timeout=3.0):
+        """Send a pairing request with PIN and return True if accepted.
+
+        Safe to call from a background thread.
+        """
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(timeout)
+            packet = json.dumps({'type': 'pair', 'pin': str(pin)}).encode()
+            sock.sendto(packet, (host, int(port)))
+
+            while True:
+                data, addr = sock.recvfrom(1024)
+                try:
+                    resp = json.loads(data.decode('utf-8'))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                if resp.get('type') == 'pair_response':
+                    return resp.get('status') == 'ok'
+        except (socket.timeout, OSError):
+            return False
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+
     # ── Discovery ───────────────────────────────────────────────────────
 
     @staticmethod

@@ -85,6 +85,16 @@ class CursorController:
         self._smooth_dx  = 0.0
         self._smooth_dy  = 0.0
         self._active     = False
+        
+        # Click error offsets
+        self.err_l_y = 0.0
+        self.err_l_p = 0.0
+        self.err_r_y = 0.0
+        self.err_r_p = 0.0
+        
+        self._applied_err_x = 0.0
+        self._applied_err_y = 0.0
+
         self._screen_w, self._screen_h = _get_screen_size()
 
     @property
@@ -94,12 +104,14 @@ class CursorController:
     def start(self):
         self._prev_yaw = self._prev_pitch = None
         self._smooth_dx = self._smooth_dy = 0.0
+        self._applied_err_x = self._applied_err_y = 0.0
         self._active = True
 
     def stop(self):
         self._active = False
         self._prev_yaw = self._prev_pitch = None
         self._smooth_dx = self._smooth_dy = 0.0
+        self._applied_err_x = self._applied_err_y = 0.0
 
     def set_sensitivity(self, v):
         self.sensitivity = max(1.0, min(30.0, v))
@@ -109,8 +121,14 @@ class CursorController:
 
     def set_smoothing(self, v):
         self.smoothing = max(0.05, min(1.0, v))
+        
+    def set_calibration_errors(self, l_y, l_p, r_y, r_p):
+        self.err_l_y = l_y
+        self.err_l_p = l_p
+        self.err_r_y = r_y
+        self.err_r_p = r_p
 
-    def update(self, yaw, pitch, paused=False):
+    def update(self, yaw, pitch, roll=0.0):
         if not self._active:
             return
         if self._prev_yaw is None:
@@ -119,13 +137,31 @@ class CursorController:
 
         raw_dx = yaw - self._prev_yaw
         raw_dy = pitch - self._prev_pitch
-        self._prev_yaw, self._prev_pitch = yaw, pitch
+        
+        # Inverse kinematics error correction
+        # We calculate the absolute target error to apply at this roll angle,
+        # and only subtract the *delta* of that error from the movement this frame.
+        target_err_x = 0.0
+        target_err_y = 0.0
+        
+        if roll < -5.0: # Left roll
+            prop = min(1.0, (abs(roll) - 5.0) / 20.0)
+            target_err_x = self.err_l_y * prop
+            target_err_y = self.err_l_p * prop
+        elif roll > 5.0: # Right roll
+            prop = min(1.0, (abs(roll) - 5.0) / 20.0)
+            target_err_x = self.err_r_y * prop
+            target_err_y = self.err_r_p * prop
+            
+        # Subtract the delta error from the raw movement
+        raw_dx -= (target_err_x - self._applied_err_x)
+        raw_dy -= (target_err_y - self._applied_err_y)
+        
+        # Save for next frame
+        self._applied_err_x = target_err_x
+        self._applied_err_y = target_err_y
 
-        if paused:
-            # Consume the delta but do not move the cursor (prevents click jitter)
-            self._smooth_dx = 0.0
-            self._smooth_dy = 0.0
-            return
+        self._prev_yaw, self._prev_pitch = yaw, pitch
 
         if raw_dx > 180.0:   raw_dx -= 360.0
         elif raw_dx < -180.0: raw_dx += 360.0
