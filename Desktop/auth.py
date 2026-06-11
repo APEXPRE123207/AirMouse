@@ -1,6 +1,6 @@
 import random
 
-DEBUG_NO_AUTH = True
+DEBUG_NO_AUTH = False
 
 class Authenticator:
     """Manages PIN generation and device authorization."""

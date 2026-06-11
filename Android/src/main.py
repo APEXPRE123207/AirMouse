@@ -187,11 +187,11 @@ class MainScreen(Screen):
         )
         self._status_lbl.bind(size=self._status_lbl.setter('text_size'))
 
-        self._status_dot = StatusDot()
+        self._dot = StatusDot()
 
         hdr.add_widget(title)
         hdr.add_widget(self._status_lbl)
-        hdr.add_widget(self._status_dot)
+        hdr.add_widget(self._dot)
         root.add_widget(hdr)
 
         # ── Angle cards ───────────────────────────────────────────────────
@@ -209,31 +209,31 @@ class MainScreen(Screen):
         root.add_widget(btn_box)
 
         # Play button
-        self._play_btn = RoundedButton(
+        self._tx_btn = RoundedButton(
             text='[font=fa-solid-900.ttf]\uf04b[/font]  START STREAM',
             bg_color=(0.15, 0.75, 0.45),
             size_hint_y=None, height=dp(56)
         )
-        self._play_btn.bind(on_press=self._toggle_stream)
-        btn_box.add_widget(self._play_btn)
+        self._tx_btn.bind(on_press=self._toggle_stream)
+        btn_box.add_widget(self._tx_btn)
 
         # Set Zero (Calibrate) button
-        self._zero_btn = RoundedButton(
+        self._cal_btn = RoundedButton(
             text='[font=fa-solid-900.ttf]\uf140[/font]  SET ZERO',
             bg_color=(0.22, 0.58, 1.0),
             size_hint_y=None, height=dp(56)
         )
-        self._zero_btn.bind(on_press=self._calibrate)
-        btn_box.add_widget(self._zero_btn)
+        self._cal_btn.bind(on_press=self._calibrate)
+        btn_box.add_widget(self._cal_btn)
 
         # Center Cursor button
-        self._center_btn = RoundedButton(
+        self._home_btn = RoundedButton(
             text='[font=fa-solid-900.ttf]\uf05b[/font]  CENTER CURSOR',
             bg_color=(0.6, 0.2, 0.8),
             size_hint_y=None, height=dp(56)
         )
-        self._center_btn.bind(on_press=self._center_cursor)
-        root.add_widget(self._center_btn)
+        self._home_btn.bind(on_press=self._center_cursor)
+        root.add_widget(self._home_btn)
 
         # ── Settings link ─────────────────────────────────────────────────
         cfg = Button(
