@@ -1,11 +1,5 @@
 """
-AirMouse - Windows Receiver (Phase 3 update)
-Receives yaw/pitch/roll JSON from the custom Android app.
-
-Replaces the old HyperIMU quaternion receiver.
-
-Packet format:
-  {"yaw": 15.2, "pitch": -8.4, "roll": 2.1}
+The UDP network listener that intercepts data from the phone.
 """
 
 import json
@@ -31,15 +25,7 @@ class OrientationData:
 
 
 class UDPReceiver:
-    """
-    Listens for AirMouse orientation packets on a UDP port.
-
-    Callbacks
-    ---------
-    on_data(data: OrientationData)   — fired on every valid packet
-    on_connect()                      — fired when first packet arrives
-    on_disconnect()                   — fired after TIMEOUT_SECONDS silence
-    """
+    """Listens for the phone screaming coordinates at us."""
 
     def __init__(
         self,
@@ -78,7 +64,7 @@ class UDPReceiver:
         """Generate a new PIN and clear all authorized devices."""
         self._auth.regenerate_pin()
 
-    # ── Public API ──────────────────────────────────────────────────────
+    # Public controls
 
     def start(self):
         if self._running:
@@ -94,7 +80,7 @@ class UDPReceiver:
         self._running = False
         self._close_socket()
 
-    # ── Internal ────────────────────────────────────────────────────────
+    # The ugly internals
 
     def _open_socket(self):
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

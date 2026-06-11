@@ -14,7 +14,7 @@ import ctypes
 import ctypes.wintypes
 import time
 
-# ── Win32 ────────────────────────────────────────────────────────────────────
+# Windows API witchcraft begins here. Don't touch this unless you like blue screens.
 _user32 = ctypes.windll.user32
 
 MOUSEEVENTF_LEFTDOWN  = 0x0002
@@ -70,7 +70,7 @@ def _scroll(amount):
     _user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, amount, 0)
 
 
-# ── Cursor Controller ───────────────────────────────────────────────────────
+# The thing that actually moves your cursor. Handle with care.
 
 class CursorController:
     """Relative / mouse-style cursor movement from yaw/pitch changes."""
@@ -114,7 +114,7 @@ class CursorController:
         self._applied_err_x = self._applied_err_y = 0.0
 
     def set_sensitivity(self, v):
-        self.sensitivity = max(1.0, min(30.0, v))
+        self.sensitivity = max(1.0, min(100.0, v))
 
     def set_dead_zone(self, v):
         self.dead_zone = max(0.0, min(1.0, v))
@@ -128,7 +128,7 @@ class CursorController:
         self.err_r_y = r_y
         self.err_r_p = r_p
 
-    def update(self, yaw, pitch, roll=0.0):
+    def update(self, yaw, pitch, roll=0.0, paused=False):
         if not self._active:
             return
         if self._prev_yaw is None:
@@ -138,9 +138,8 @@ class CursorController:
         raw_dx = yaw - self._prev_yaw
         raw_dy = pitch - self._prev_pitch
         
-        # Inverse kinematics error correction
-        # We calculate the absolute target error to apply at this roll angle,
-        # and only subtract the *delta* of that error from the movement this frame.
+        # IK error correction.
+        # This prevents the cursor from "walking" away when you twist your wrist like a maniac.
         target_err_x = 0.0
         target_err_y = 0.0
         
@@ -162,6 +161,13 @@ class CursorController:
         self._applied_err_y = target_err_y
 
         self._prev_yaw, self._prev_pitch = yaw, pitch
+
+        if paused:
+            # Fake the freeze! We keep doing the IK math in the background so the real world stays synced,
+            # but we just brutally murder the visual momentum so the cursor stops wiggling.
+            self._smooth_dx *= 0.5
+            self._smooth_dy *= 0.5
+            return
 
         if raw_dx > 180.0:   raw_dx -= 360.0
         elif raw_dx < -180.0: raw_dx += 360.0
@@ -187,7 +193,7 @@ class CursorController:
             _set_cursor_pos(nx, ny)
 
 
-# ── Click / Drag / Scroll Controller ────────────────────────────────────────
+# Where wrist-flicks become clicks. Prepare for some aggressive rolling.
 
 class ClickController:
     """

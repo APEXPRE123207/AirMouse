@@ -21,7 +21,7 @@ Welcome to **AirMouse**, the project born out of the absolute refusal to get off
 *   **Roll-to-Click:** Flick your wrist left or right like you're aggressively turning a steering wheel. That's your left and right click.
 *   **Hold-to-Drag:** Tilt past the threshold and hold it for 1.5 seconds. Congratulations, you are now dragging a window. Don't drop it.
 *   **Deep Roll to Scroll:** Tilt the phone even further (past 35°) to scroll up and down.
-*   **Anti-Jitter Cursor Freeze:** Automatically freezes your cursor when you're rolling to click so you don't accidentally miss your target because human hands shake like crazy.
+*   **Anti-Jitter Cursor Freeze (with IK Sync):** Visually freezes the cursor the millisecond you start twisting to click so you don't miss your target. Meanwhile, the Inverse Kinematics engine tracks your hand in the background so when you unfreeze, the cursor doesn't jump or "walk" away.
 
 **Stability & "Please don't crash" UI**
 *   **Auto-Discovery:** Typing IP addresses manually is a crime against humanity. The Android app screams into the local network void, and the Desktop app replies. Auto-connect. Boom.
@@ -39,7 +39,8 @@ Welcome to **AirMouse**, the project born out of the absolute refusal to get off
 *   **v2:** The "Actually Usable" update. Added basic smoothing and deadzones, making the cursor controllable but lacking clicks or a UI.
 *   **v3:** The "Feature Complete" update. Added relative cursor mapping, auto-discovery, roll-to-click gestures, and the base PyQt5 UI.
 *   **-> v4:** The "Clean & Secure" update. Modular UI architecture, 4-digit PIN authorization pairing, and the interactive Inverse Kinematics Click Drift Fix wizard.
-*   **v5\*:** The "Machine Learning" update. Personalized natural gesture recognition for clicking (learns your exact wrist twitch).
+*   **v5\***: The "Button Fallback" update. Adding alternative physical UI buttons on the Android app for left and right click, for those who don't want to use roll gestures.
+*   **v6\***: The "Machine Learning" update. Personalized natural gesture recognition for clicking (learns your exact wrist twitch).
 
 *\* indicates planned future version*
 

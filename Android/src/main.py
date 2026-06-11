@@ -1,21 +1,6 @@
 """
-AirMouse - Android App  (Phase 1 + 2)
-BUG FIX: pitch/roll swap caused by device-frame vs world-frame Euler angles.
-
-ROOT CAUSE:
-  Old code: raw quaternion → Euler using aerospace ZYX convention.
-  These angles are relative to the DEVICE frame, so they shift meaning
-  depending on how you hold the phone (flat vs upright).
-
-FIX:
-  Use Android's SensorManager.getRotationMatrixFromVector()
-  + SensorManager.getOrientation() which returns WORLD-REFERENCED angles:
-    values[0] = azimuth  → yaw   (rotation around world vertical Z)
-    values[1] = pitch    → pitch (tilt front/back vs gravity)  ← always correct
-    values[2] = roll     → roll  (tilt sideways vs gravity)    ← always correct
-
-  These are gravity-referenced so pitch always means "nose up/down"
-  and roll always means "lean left/right" regardless of phone orientation.
+AirMouse - Android App
+Because physical mice are so 1990s.
 """
 
 import math
@@ -39,7 +24,7 @@ from udp_sender import UDPSender, DEFAULT_PORT
 from ui_components import GaugeBar, AngleCard, StatusDot, RoundedButton
 from settings_screen import SettingsScreen
 
-# ── Android bridge ───────────────────────────────────────────────────────────
+# The bridge between Python and Android. Let's hope it doesn't collapse.
 try:
     from jnius import autoclass, PythonJavaClass, java_method
     from android.permissions import request_permissions, Permission
@@ -54,21 +39,9 @@ except Exception:
     ANDROID = False
 
 
-# ── Sensor listener — FIXED to use world-frame angles ───────────────────────
+# Listening to your phone sensors. Yes, it knows when you hold it upside down.
 
 class SensorListener:
-    """
-    Reads TYPE_GAME_ROTATION_VECTOR and converts to world-referenced
-    yaw/pitch/roll using Android's own getOrientation() API.
-
-    This gives gravity-referenced angles that work correctly regardless
-    of how the phone is physically held.
-
-    IMPORTANT — Pyjnius Java array note:
-    getRotationMatrixFromVector() and getOrientation() require real Java
-    float[] arrays, not Python lists. We use jnius.cast + array module to
-    create them once at init and reuse every frame (avoids GC pressure).
-    """
 
     def __init__(self):
         self.yaw   = 0.0
@@ -146,7 +119,7 @@ class SensorListener:
         self._active = False
 
 
-# ── Main screen ──────────────────────────────────────────────────────────────
+# The shiny buttons. Please don't press them all at once.
 
 class MainScreen(Screen):
     def __init__(self, sensor, sender, **kwargs):
@@ -248,7 +221,7 @@ class MainScreen(Screen):
 
         self._sender.on_status_change = self._on_net_status
 
-    # ── Callbacks ─────────────────────────────────────────────────────────
+    # Button click handlers. Stuff that happens when you poke the screen.
 
     def _calibrate(self, *_):
         self._offset['yaw']   = self._sensor.yaw
@@ -290,7 +263,7 @@ class MainScreen(Screen):
                 self._dot.set_active(False)
         Clock.schedule_once(_upd, 0)
 
-    # ── Per-frame update ──────────────────────────────────────────────────
+    # Runs 60 times a second. Don't put slow code here or your phone will melt.
 
     def update(self, dt):
         if ANDROID:
@@ -314,7 +287,7 @@ class MainScreen(Screen):
         if self._tx_enabled:
             self._sender.send(yaw, pitch, roll)
 
-# ── App ──────────────────────────────────────────────────────────────────────
+# Let's fire this thing up
 
 class AirMouseApp(App):
     def build(self):

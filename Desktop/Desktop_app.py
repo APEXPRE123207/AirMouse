@@ -26,7 +26,7 @@ from mouse_move import CursorController, ClickController, _get_screen_size, _set
 from calib_wizard import ClickCalibWizard
 
 
-# ── Colours ──────────────────────────────────────────────────────────────────
+# Pretty colours because default grey is depressing
 BG            = "#111118"
 CARD_BG       = "#1a1a24"
 BORDER        = "#2a2a38"
@@ -42,7 +42,7 @@ SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settin
 LISTEN_PORT   = 5005
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# Random utility stuff I threw in here
 
 def _get_local_ip():
     try:
@@ -98,7 +98,7 @@ def _save_settings(data):
         pass
 
 
-# ── Main window ──────────────────────────────────────────────────────────────
+# The actual app. Brace yourself.
 
 class DesktopApp(QMainWindow):
     def __init__(self):
@@ -216,7 +216,7 @@ class DesktopApp(QMainWindow):
         sl = QVBoxLayout(sc)
         sl.setContentsMargins(14, 10, 14, 10); sl.setSpacing(6)
 
-        self._sens_slider, _ = self._slider(sl, "SENSITIVITY", 1, 30, 30,
+        self._sens_slider, _ = self._slider(sl, "SENSITIVITY", 1, 100, 30,
                                             self._on_sensitivity)
         self._dz_slider, _ = self._slider(sl, "DEAD ZONE", 0, 50, 5,
                                           self._on_dead_zone,
@@ -383,12 +383,12 @@ class DesktopApp(QMainWindow):
         _set_cursor_pos(w // 2, h // 2)
         self._calibrate(silent=True)
 
-    # ── Receiver ─────────────────────────────────────────────────────────
+    # The network listener. Basically screams into the void hoping for Android packets.
 
     def _start_receiver(self):
         threading.Thread(target=self.receiver.run, daemon=True).start()
 
-    # ── Main loop ────────────────────────────────────────────────────────
+    # The 60Hz heartbeat that keeps this frankenstein alive
 
     def _tick(self):
         connected = self.receiver.connected
@@ -437,8 +437,13 @@ class DesktopApp(QMainWindow):
             self.wizard.update_sensor(self.current_yaw, self.current_pitch, dr)
             return
 
+        # Determine if we should freeze the cursor
+        is_rolling   = abs(dr) > 8.0
+        is_dragging  = self.click_ctl.state == ClickController.DRAGGING
+        pause_cursor = is_rolling and not is_dragging
+
         # Cursor movement
-        self.cursor_ctl.update(self.current_yaw, self.current_pitch, dr)
+        self.cursor_ctl.update(self.current_yaw, self.current_pitch, dr, paused=pause_cursor)
 
         # Click / drag / scroll
         action = self.click_ctl.update(dr)

@@ -44,13 +44,6 @@ class AirMouseReceiver:
         self.roll = float(data.roll)
         self.connected = True
 
-        # write latest snapshot to file (overwrite)
-        output_dir = os.path.dirname(self.json_path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        with open(self.json_path, "w") as f:
-            json.dump({"yaw": self.yaw, "pitch": self.pitch, "roll": self.roll}, f, indent=2)
-
     def _on_connect(self):
         self.connected = True
 

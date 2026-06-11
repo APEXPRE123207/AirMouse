@@ -13,10 +13,7 @@ ACCENT_GREEN  = "#2ecc71"
 ACCENT_ORANGE = "#f39c12"
 
 class ClickCalibWizard(QWidget):
-    """
-    An overlay wizard to calibrate the unwanted yaw/pitch movement
-    that happens when twisting the wrist to click.
-    """
+    """The wizard that measures how badly your hands shake."""
     def __init__(self, parent_widget, on_complete_cb):
         super().__init__(parent_widget, Qt.Window)
         self.setWindowTitle("Click Calibration")
